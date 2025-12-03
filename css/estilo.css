@@ -1,69 +1,89 @@
 /* Estilos gerais */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: white;
+    background-color: #f4f4f4;
 }
 
 /* Navbar */
 .navbar {
-    background-color: #007bff;
+    background-color: #004a8f;
     color: white;
-    padding: 10px 20px;
+    padding: 15px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .navbar-left {
-    font-size: 18px;
+    font-size: 1.2em;
     font-weight: bold;
 }
 
 .navbar-right button {
-    background-color: #0056b3;
+    background-color: #003366;
     color: white;
     border: none;
-    padding: 8px 12px;
+    padding: 10px 15px;
     cursor: pointer;
     border-radius: 4px;
+    font-size: 1em;
+    transition: background 0.3s;
 }
 
 .navbar-right button:hover {
-    background-color: #004085;
+    background-color: #002244;
+}
+
+.navbar-right a {
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
 }
 
 .dropdown-menu {
     position: absolute;
-    top: 50px;
+    top: 60px;
     right: 20px;
     background-color: white;
-    border: 1px solid #ccc;
+    border: 1px solid #ddd;
     border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     z-index: 1000;
+    min-width: 150px;
 }
 
 .dropdown-menu a {
     display: block;
-    padding: 10px 15px;
+    padding: 12px 20px;
     color: #333;
     text-decoration: none;
+    border-bottom: 1px solid #eee;
+}
+
+.dropdown-menu a:last-child {
+    border-bottom: none;
 }
 
 .dropdown-menu a:hover {
-    background-color: #f8f9fa;
+    background-color: #f0f0f0;
+    color: #004a8f;
 }
 
 /* Container */
 .container {
-    max-width: 800px;
+    max-width: 1000px;
     margin: 20px auto;
-    padding: 20px;
+    padding: 25px;
     background-color: white;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.container-content {
+    padding: 20px;
 }
 
 /* Formulários */
@@ -75,84 +95,119 @@ input,
 select,
 button {
     width: 100%;
-    padding: 10px;
-    margin: 5px 0;
+    padding: 12px;
+    margin: 8px 0;
     border: 1px solid #ccc;
     border-radius: 4px;
     box-sizing: border-box;
+    font-size: 1em;
 }
 
-input:focus {
-    border-color: #007bff;
+input:focus,
+select:focus {
+    border-color: #004a8f;
+    outline: none;
 }
 
 button {
-    background-color: #007bff;
+    background-color: #004a8f;
     color: white;
     border: none;
     cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s;
 }
 
 button:hover {
-    background-color: #0056b3;
+    background-color: #003366;
 }
 
 /* Cards */
 .cards {
     display: flex;
-    justify-content: space-around;
-    margin-bottom: 20px;
+    justify-content: space-between;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    gap: 20px;
 }
 
 .card {
-    background-color: #f8f9fa;
+    background-color: white;
     padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     text-align: center;
     cursor: pointer;
-    width: 30%;
+    flex: 1;
+    min-width: 200px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border-left: 5px solid #004a8f;
 }
 
 .card:hover {
-    background-color: #e9ecef;
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
 .card h3 {
     margin: 0 0 10px 0;
-    font-size: 16px;
+    font-size: 1.1em;
+    color: #555;
 }
 
 .card p {
-    font-size: 24px;
+    font-size: 2em;
     font-weight: bold;
     margin: 0;
+    color: #004a8f;
 }
 
-/* Listas */
+/* Listas e Tabelas */
 .list {
-    margin-top: 20px;
+    margin-top: 30px;
 }
 
 .list h4 {
-    margin-bottom: 10px;
+    margin-bottom: 15px;
+    color: #333;
+    border-bottom: 2px solid #004a8f;
+    padding-bottom: 10px;
+    display: inline-block;
+}
+
+/* Responsividade para tabelas */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
     margin-top: 10px;
+    min-width: 600px;
+    /* Garante largura mínima para não quebrar layout */
 }
 
 table th,
 table td {
-    padding: 10px;
+    padding: 12px 15px;
     border: 1px solid #ddd;
     text-align: left;
 }
 
 table th {
     background-color: #f8f9fa;
+    color: #333;
+    font-weight: bold;
+}
+
+table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+table tr:hover {
+    background-color: #f1f1f1;
 }
 
 /* Seções */
@@ -161,93 +216,100 @@ table th {
     padding: 20px;
     background-color: white;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .msg {
     text-align: center;
     font-weight: bold;
-    font-size: 30px;
-    color: green;
+    font-size: 1.1em;
+    color: #155724;
+    background-color: #d4edda;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
 }
 
 /* Media Queries para Responsividade */
 @media (max-width: 768px) {
     .navbar {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
+        text-align: center;
+    }
+
+    .navbar-left {
+        margin-bottom: 15px;
     }
 
     .navbar-right {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .navbar-right button {
+        width: 100%;
+    }
+
+    .dropdown-menu {
+        position: static;
+        width: 100%;
+        box-shadow: none;
+        border: 1px solid #eee;
         margin-top: 10px;
     }
 
     .container {
         margin: 10px;
-        padding: 10px;
+        padding: 15px;
     }
 
     .cards {
         flex-direction: column;
-        align-items: center;
     }
 
     .card {
-        width: 80%;
-        margin-bottom: 10px;
+        width: 100%;
     }
 
+    /* Forçar tabela a ter scroll horizontal se necessário */
+    .list>div {
+        overflow-x: auto;
+    }
+
+    /* Caso as tabelas não estejam em divs, aplicar diretamente */
     table {
-        font-size: 12px;
-    }
-
-    table th,
-    table td {
-        padding: 5px;
-    }
-
-    .section {
-        padding: 10px;
-    }
-
-    .msg {
-        font-size: 20px;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
     }
 }
 
 @media (max-width: 480px) {
     .navbar-left {
-        font-size: 14px;
-    }
-
-    .container {
-        margin: 5px;
-        padding: 5px;
-    }
-
-    .card {
-        width: 90%;
-        padding: 10px;
-    }
-
-    .card h3 {
-        font-size: 14px;
+        font-size: 1em;
     }
 
     .card p {
-        font-size: 18px;
+        font-size: 1.5em;
     }
 
-    table {
-        font-size: 10px;
-    }
-
-    .section {
-        margin-top: 10px;
-        padding: 5px;
-    }
-
-    .msg {
-        font-size: 16px;
+    input,
+    select,
+    button {
+        padding: 10px;
     }
 }
