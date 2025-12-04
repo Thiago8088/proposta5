@@ -155,6 +155,54 @@ if ($tipo_user == 'aluno') {
 // LÓGICA PEDAGÓGICO
 
 
+$msg_type = "";
+
+
+// LÓGICA ALUNO
+
+
+if ($tipo_user == 'aluno') {
+    if (isset($_POST['solicitar_saida'])) {
+        $id_curricular = LimpaPost($_POST['id_curricular']);
+        $turno = LimpaPost($_POST['turno']);
+        $modalidade = LimpaPost($_POST['modalidade']);
+        $data_solicitacao = $_POST['data_solicitacao'];
+        $hora_solicitacao = $_POST['hora_solicitacao'];
+        $motivo = $_POST['motivo'];
+        $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
+
+        if (empty($motivo)) {
+            $msg = "Selecione o motivo da solicitação!";
+            $msg_type = "error";
+        } elseif ($motivo == '10' && empty($motivo_outro)) {
+            $msg = "Descreva o motivo da saída!";
+            $msg_type = "error";
+        } else {
+            $motivo_final = $motivo == '10' ? $motivo_outro : $motivo;
+
+            try {
+                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitacao, hora_solicitacao, turno, modalidade, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'solicitado')");
+                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_final, $data_solicitacao, $hora_solicitacao, $turno, $modalidade]);
+                $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
+                $msg_type = "success";
+
+                if (!empty($user['contato_responsavel'])) {
+                    enviarWhatsApp($user['contato_responsavel'], "Seu filho(a) " . $user['nome'] . " solicitou saída da escola. Motivo: " . $motivo_final);
+                }
+            } catch (PDOException $e) {
+                $msg = "Erro ao enviar solicitação: " . $e->getMessage();
+                $msg_type = "error";
+            }
+        }
+    }
+
+    $ucs = $conn->query("SELECT uc.* FROM unidade_curricular uc JOIN turma t ON uc.id_curso = t.id_curso JOIN matricula m ON t.id_turma = m.id_turma WHERE m.id_aluno = " . $user['id_aluno'])->fetchAll();
+}
+
+
+// LÓGICA PEDAGÓGICO
+
+
 if ($tipo_user == 'pedagógico') {
     if (isset($_POST['autorizar_saida'])) {
         $id_solicitacao = $_POST['id_solicitacao'];
@@ -727,26 +775,27 @@ if ($tipo_user == 'portaria') {
                         <?php
                         $todas = $conn->query("
                             SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.hora_solicitacao, '%H:%i') as hora_solicitacao_fmt,
+                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
                                    DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao,
-                                   DATE_FORMAT(s.data_liberacao_instrutor, '%H:%i') as hora_liberacao,
                                    DATE_FORMAT(s.data_saida, '%H:%i') as hora_saida
                             FROM solicitacao s
                             JOIN aluno a ON s.id_aluno = a.id_aluno
                             ORDER BY s.id_solicitacao DESC
                         ")->fetchAll();
-                        foreach ($todas as $sol): ?>
-                            <div class="solicitacao-detalhe">
-                                <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                <p><strong>Hora Solicitação:</strong> <?php echo $sol['hora_solicitacao_fmt']; ?></p>
-                                <p><strong>Hora Autorização Responsável:</strong> <?php echo $sol['hora_autorizacao'] ?? 'Pendente'; ?></p>
-                                <p><strong>Hora Autorização Instrutor:</strong> <?php echo $sol['hora_liberacao'] ?? 'Pendente'; ?></p>
-                                <p><strong>Código:</strong> <?php echo $sol['codigo_liberacao'] ?? 'N/A'; ?></p>
-                                <p><strong>Hora Saída (Portaria):</strong> <?php echo $sol['hora_saida'] ?? 'Pendente'; ?></p>
-                                <p><strong>Status:</strong> <span style="color: <?php echo getStatusColor($sol['status']); ?>;"><?php echo getStatusText($sol['status']); ?></span></p>
-                            </div>
-                        <?php endforeach; ?>
+                        if (empty($todas)): ?>
+                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações cadastradas.</p>
+                        <?php else: ?>
+                            <?php foreach ($todas as $sol): ?>
+                                <div class="solicitacao-detalhe">
+                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
+                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
+                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
+                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao'] ?? 'Pendente'; ?></p>
+                                    <p><strong>Hora Saída:</strong> <?php echo $sol['hora_saida'] ?? 'Pendente'; ?></p>
+                                    <p><strong>Status:</strong> <span style="color: <?php echo getStatusColor($sol['status']); ?>;"><?php echo getStatusText($sol['status']); ?></span></p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </div>
 
                     <div id="solicitacoes-responsavel" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
@@ -754,19 +803,23 @@ if ($tipo_user == 'portaria') {
                         <?php
                         $resp = $conn->query("
                             SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.hora_solicitacao, '%H:%i') as hora_solicitacao_fmt
+                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt
                             FROM solicitacao s
                             JOIN aluno a ON s.id_aluno = a.id_aluno
                             WHERE s.status = 'solicitado'
                             ORDER BY s.id_solicitacao DESC
                         ")->fetchAll();
-                        foreach ($resp as $sol): ?>
-                            <div class="solicitacao-detalhe">
-                                <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                <p><strong>Hora Solicitação:</strong> <?php echo $sol['hora_solicitacao_fmt']; ?></p>
-                            </div>
-                        <?php endforeach; ?>
+                        if (empty($resp)): ?>
+                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações aguardando responsável.</p>
+                        <?php else: ?>
+                            <?php foreach ($resp as $sol): ?>
+                                <div class="solicitacao-detalhe">
+                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
+                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
+                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </div>
 
                     <div id="solicitacoes-instrutor" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
@@ -774,22 +827,25 @@ if ($tipo_user == 'portaria') {
                         <?php
                         $inst = $conn->query("
                             SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.hora_solicitacao, '%H:%i') as hora_solicitacao_fmt,
+                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
                                    DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao
                             FROM solicitacao s
                             JOIN aluno a ON s.id_aluno = a.id_aluno
                             WHERE s.status = 'autorizado'
                             ORDER BY s.id_solicitacao DESC
                         ")->fetchAll();
-                        foreach ($inst as $sol): ?>
-                            <div class="solicitacao-detalhe">
-                                <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                <p><strong>Hora Solicitação:</strong> <?php echo $sol['hora_solicitacao_fmt']; ?></p>
-                                <p><strong>Hora Autorização Responsável:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
-                                <p><strong>Código:</strong> <?php echo $sol['codigo_liberacao']; ?></p>
-                            </div>
-                        <?php endforeach; ?>
+                        if (empty($inst)): ?>
+                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações aguardando instrutor.</p>
+                        <?php else: ?>
+                            <?php foreach ($inst as $sol): ?>
+                                <div class="solicitacao-detalhe">
+                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
+                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
+                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
+                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </div>
 
                     <div id="solicitacoes-portaria" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
@@ -797,24 +853,25 @@ if ($tipo_user == 'portaria') {
                         <?php
                         $port = $conn->query("
                             SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.hora_solicitacao, '%H:%i') as hora_solicitacao_fmt,
-                                   DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao,
-                                   DATE_FORMAT(s.data_liberacao_instrutor, '%H:%i') as hora_liberacao
+                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
+                                   DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao
                             FROM solicitacao s
                             JOIN aluno a ON s.id_aluno = a.id_aluno
                             WHERE s.status = 'liberado'
                             ORDER BY s.id_solicitacao DESC
                         ")->fetchAll();
-                        foreach ($port as $sol): ?>
-                            <div class="solicitacao-detalhe">
-                                <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                <p><strong>Hora Solicitação:</strong> <?php echo $sol['hora_solicitacao_fmt']; ?></p>
-                                <p><strong>Hora Autorização Responsável:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
-                                <p><strong>Hora Autorização Instrutor:</strong> <?php echo $sol['hora_liberacao']; ?></p>
-                                <p><strong>Código:</strong> <?php echo $sol['codigo_liberacao']; ?></p>
-                            </div>
-                        <?php endforeach; ?>
+                        if (empty($port)): ?>
+                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações aguardando portaria.</p>
+                        <?php else: ?>
+                            <?php foreach ($port as $sol): ?>
+                                <div class="solicitacao-detalhe">
+                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
+                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
+                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
+                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </div>
 
                     <div id="solicitacoes-liberadas" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
@@ -822,26 +879,28 @@ if ($tipo_user == 'portaria') {
                         <?php
                         $lib = $conn->query("
                             SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.hora_solicitacao, '%H:%i') as hora_solicitacao_fmt,
+                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
                                    DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao,
-                                   DATE_FORMAT(s.data_liberacao_instrutor, '%H:%i') as hora_liberacao,
                                    DATE_FORMAT(s.data_saida, '%H:%i') as hora_saida
                             FROM solicitacao s
                             JOIN aluno a ON s.id_aluno = a.id_aluno
                             WHERE s.status IN ('liberado', 'concluido')
                             ORDER BY s.id_solicitacao DESC
                         ")->fetchAll();
-                        foreach ($lib as $sol): ?>
-                            <div class="solicitacao-detalhe">
-                                <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                <p><strong>Hora Solicitação:</strong> <?php echo $sol['hora_solicitacao_fmt']; ?></p>
-                                <p><strong>Hora Autorização Responsável:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
-                                <p><strong>Hora Autorização Instrutor:</strong> <?php echo $sol['hora_liberacao']; ?></p>
-                                <p><strong>Código:</strong> <?php echo $sol['codigo_liberacao']; ?></p>
-                                <p><strong>Hora Saída:</strong> <?php echo $sol['hora_saida'] ?? 'Aguardando'; ?></p>
-                            </div>
-                        <?php endforeach; ?>
+                        if (empty($lib)): ?>
+                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações liberadas/concluídas.</p>
+                        <?php else: ?>
+                            <?php foreach ($lib as $sol): ?>
+                                <div class="solicitacao-detalhe">
+                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
+                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
+                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
+                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
+                                    <p><strong>Hora Saída:</strong> <?php echo $sol['hora_saida'] ?? 'Aguardando'; ?></p>
+                                    <p><strong>Status:</strong> <span style="color: <?php echo getStatusColor($sol['status']); ?>;"><?php echo getStatusText($sol['status']); ?></span></p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -883,7 +942,7 @@ if ($tipo_user == 'portaria') {
                                     <strong>UC:</strong> <?php echo htmlspecialchars($s['uc_nome'] ?? 'N/A'); ?>
                                 </div>
                                 <div class="info-item">
-                                    <strong>Data/Hora:</strong> <?php echo date('d/m/Y H:i', strtotime($s['data_solicitacao'] . ' ' . $s['hora_solicitacao'])); ?>
+                                    <strong>Data/Hora:</strong> <?php echo date('d/m/Y H:i', strtotime($s['data_solicitada'])); ?>
                                 </div>
                                 <div class="info-item">
                                     <strong>Motivo:</strong> <?php echo htmlspecialchars($s['motivo']); ?>
@@ -1304,3 +1363,6 @@ if ($tipo_user == 'portaria') {
 </body>
 
 </html>
+
+
+
