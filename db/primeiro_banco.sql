@@ -26,26 +26,25 @@ CREATE TABLE aluno (
     id_aluno INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(150) NOT NULL UNIQUE,
     matricula VARCHAR(10) NOT NULL UNIQUE,
-    cpf CHAR(11) NOT NULL,
-    celular CHAR(11) NOT NULL,
+    cpf CHAR(15) NOT NULL,
+    celular CHAR(13) NOT NULL,
     senha_hash VARCHAR(255) NOT NULL,
-   
     contato_responsavel CHAR(11) NULL,
     contato_empresa CHAR(11) NULL,
     data_nascimento DATE NOT NULL
 );
 
 CREATE TABLE matricula(
- id_turma INT NOT NULL,
- id_aluno INT NOT NULL,
-FOREIGN KEY(id_turma) REFERENCES turma(id_turma),
-FOREIGN KEY(id_aluno) REFERENCES aluno(id_aluno)
+    id_turma INT NOT NULL,
+    id_aluno INT NOT NULL,
+    FOREIGN KEY(id_turma) REFERENCES turma(id_turma),
+    FOREIGN KEY(id_aluno) REFERENCES aluno(id_aluno)
 );
 
 CREATE TABLE funcionario (
     id_funcionario INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(150) NOT NULL,
-    cpf VARCHAR(11) NOT NULL,
+    cpf CHAR(15) NOT NULL,
     tipo ENUM('pedagógico', 'instrutor', 'portaria'),
     senha_hash VARCHAR(255) NOT NULL
 );

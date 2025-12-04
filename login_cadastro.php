@@ -2,7 +2,6 @@
 session_start();
 require("db/conexao.php");
 
-// MENSAGENS SEPARADAS POR TELA
 $msg_login = "";
 $msg_cad_aluno = "";
 $msg_cad_func = "";
@@ -12,7 +11,7 @@ $msg_type = "";
 $tela_atual = "login";
 $dados_formulario = [];
 
-// --- CADASTRO ALUNO ---
+// CADASTRO ALUNO 
 if (isset($_POST['cadastrar_aluno'])) {
     $tela_atual = "cadastro_aluno";
 
@@ -63,7 +62,6 @@ if (isset($_POST['cadastrar_aluno'])) {
         }
     }
 
-    // Validação da senha
     if (!empty($dados_formulario['senha'])) {
         $errosSenha = validarSenhaForte($dados_formulario['senha']);
         if (!empty($errosSenha)) {
@@ -71,14 +69,12 @@ if (isset($_POST['cadastrar_aluno'])) {
         }
     }
 
-    // Validação da matrícula
     if (!empty($dados_formulario['matricula'])) {
         if (matriculaJaExiste($dados_formulario['matricula'], null, 'aluno')) {
             $erros[] = "Esta matrícula já está cadastrada no sistema";
         }
     }
 
-    // Validação da data
     if (!empty($dados_formulario['data_nascimento'])) {
         if (!validarData($dados_formulario['data_nascimento'])) {
             $erros[] = "Data de nascimento inválida";
@@ -122,7 +118,7 @@ if (isset($_POST['cadastrar_aluno'])) {
     }
 }
 
-// --- CADASTRO FUNCIONÁRIO (SIMPLIFICADO) ---
+// CADASTRO FUNCIONÁRIO
 if (isset($_POST['cadastrar_funcionario'])) {
     $tela_atual = "cadastro_funcionario";
 
@@ -134,8 +130,6 @@ if (isset($_POST['cadastrar_funcionario'])) {
     ];
 
     $erros = [];
-
-    // Validação de campos obrigatórios
     if (empty($dados_formulario['nome'])) {
         $erros[] = "O campo Nome é obrigatório";
     }
@@ -152,7 +146,6 @@ if (isset($_POST['cadastrar_funcionario'])) {
         $erros[] = "O campo Senha é obrigatório";
     }
 
-    // Validação do CPF
     $cpf_limpo = '';
     if (!empty($dados_formulario['cpf'])) {
         $cpf_limpo = limparCPF($dados_formulario['cpf']);
@@ -166,7 +159,6 @@ if (isset($_POST['cadastrar_funcionario'])) {
         }
     }
 
-    // Validação da senha
     if (!empty($dados_formulario['senha'])) {
         $errosSenha = validarSenhaForte($dados_formulario['senha']);
         if (!empty($errosSenha)) {
@@ -174,7 +166,6 @@ if (isset($_POST['cadastrar_funcionario'])) {
         }
     }
 
-    // Se não houver erros, cadastra
     if (empty($erros)) {
         $cpf_formatado = formatarCPF($cpf_limpo);
         $senha_hash = hashSenha($dados_formulario['senha']);
@@ -211,7 +202,6 @@ if (isset($_POST['cadastrar_funcionario'])) {
     }
 }
 
-// --- LOGIN (CORRIGIDO PARA FUNCIONÁRIO) ---
 if (isset($_POST['logar'])) {
     $tela_atual = "login";
 
@@ -223,18 +213,18 @@ if (isset($_POST['logar'])) {
         $msg_type = "error";
     } else {
         $usuario_encontrado = false;
-
-        // Limpa e formata o CPF
         $cpf_limpo = limparCPF($login_input);
         $cpf_formatado = formatarCPF($cpf_limpo);
 
-        // TENTA BUSCAR COMO ALUNO (matrícula ou CPF)
+
+
         try {
             $stmt = $conn->prepare("SELECT * FROM aluno WHERE matricula = ? OR cpf = ? OR cpf = ? LIMIT 1");
             $stmt->execute([$login_input, $cpf_formatado, $cpf_limpo]);
             $aluno = $stmt->fetch();
 
             if ($aluno) {
+                echo "Debug: Aluno encontrado: " . $aluno['nome'] . "<br>";
                 if (password_verify($senha, $aluno['senha_hash'])) {
                     $_SESSION['id'] = $aluno['id_aluno'];
                     $_SESSION['nome'] = $aluno['nome'];
@@ -246,21 +236,23 @@ if (isset($_POST['logar'])) {
                     $msg_type = "error";
                     $usuario_encontrado = true;
                 }
+            } else {
+                echo "Debug: Nenhum aluno encontrado<br>";
             }
         } catch (PDOException $e) {
             error_log("Erro ao buscar aluno: " . $e->getMessage());
         }
 
-        // TENTA BUSCAR COMO FUNCIONÁRIO (apenas CPF)
-        if (!$usuario_encontrado && !isset($aluno)) {
+        if (!$usuario_encontrado && $aluno === false) {
+            echo "Debug: Procurando funcionário<br>";
             try {
-                // Busca apenas por CPF (formatado ou limpo)
                 $stmt = $conn->prepare("SELECT * FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
                 $stmt->execute([$cpf_formatado, $cpf_limpo]);
 
                 $func = $stmt->fetch();
 
                 if ($func) {
+                    echo "Debug: Funcionário encontrado: " . $func['nome'] . "<br>";
                     if (password_verify($senha, $func['senha_hash'])) {
                         $_SESSION['id'] = $func['id_funcionario'];
                         $_SESSION['nome'] = $func['nome'];
@@ -272,6 +264,8 @@ if (isset($_POST['logar'])) {
                         $msg_type = "error";
                         $usuario_encontrado = true;
                     }
+                } else {
+                    echo "Debug: Nenhum funcionário encontrado<br>";
                 }
             } catch (PDOException $e) {
                 error_log("Erro ao buscar funcionário: " . $e->getMessage());
@@ -285,7 +279,7 @@ if (isset($_POST['logar'])) {
     }
 }
 
-// --- RESET SENHA (CORRIGIDO) ---
+//RESETAR SENHA
 if (isset($_POST['reset_senha'])) {
     $tela_atual = "reset_senha";
 
@@ -328,8 +322,6 @@ if (isset($_POST['reset_senha'])) {
 
         $senha_hash = hashSenha($dados_formulario['nova_senha']);
         $resetado = false;
-
-        // Tenta resetar como ALUNO
         try {
             $stmt = $conn->prepare("UPDATE aluno SET senha_hash = ? WHERE matricula = ? OR cpf = ? OR cpf = ?");
             $stmt->execute([$senha_hash, $dados_formulario['identificador'], $cpf_formatado, $identificador_limpo]);
@@ -340,7 +332,6 @@ if (isset($_POST['reset_senha'])) {
             error_log("Erro ao resetar senha aluno: " . $e->getMessage());
         }
 
-        // Tenta resetar como FUNCIONÁRIO (apenas CPF)
         if (!$resetado) {
             try {
                 $stmt = $conn->prepare("UPDATE funcionario SET senha_hash = ? WHERE cpf = ? OR cpf = ?");
@@ -509,7 +500,7 @@ if (isset($_POST['reset_senha'])) {
                 <p class="toggle" onclick="mostrar('login')">Voltar ao Login</p>
             </div>
 
-            <!-- CADASTRO FUNCIONÁRIO (FORMULÁRIO SIMPLIFICADO) -->
+            <!-- CADASTRO FUNCIONÁRIO -->
             <div id="cadastro_funcionario" class="form-section" style="display: <?= $tela_atual == 'cadastro_funcionario' ? 'block' : 'none' ?>;">
                 <?php if (!empty($msg_cad_func)) : ?>
                     <div class="msg <?= $msg_type ?>"><?= $msg_cad_func ?></div>
@@ -535,7 +526,7 @@ if (isset($_POST['reset_senha'])) {
                 <p class="toggle" onclick="mostrar('login')">Voltar ao Login</p>
             </div>
 
-            <!-- RESET SENHA -->
+            <!-- RESETARUsuário não encontrado. Verifique sua matrícula ou CPF. SENHA -->
             <div id="reset_senha" class="form-section" style="display: <?= $tela_atual == 'reset_senha' ? 'block' : 'none' ?>;">
                 <?php if (!empty($msg_reset)) : ?>
                     <div class="msg <?= $msg_type ?>"><?= $msg_reset ?></div>
