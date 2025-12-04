@@ -11,6 +11,7 @@ CREATE TABLE turma (
     id_turma INT PRIMARY KEY AUTO_INCREMENT,
     nome VARCHAR(100) NOT NULL,
     id_curso INT NOT NULL,
+    carga_horaria_total INT DEFAULT 0,
     FOREIGN KEY (id_curso) REFERENCES curso(id_curso) 
 );
 

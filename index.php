@@ -1074,7 +1074,7 @@ if ($tipo_user == 'portaria') {
                             <?php endforeach; ?>
                         </select>
                         <input type="text" name="nome_turma" placeholder="Nome da turma" required>
-                        <input type="number" name="carga_horaria_total" id="carga_horaria_total" placeholder="Carga horária total" readonly style="background:#f0f0f0;">
+                        <input type="number" name="carga_horaria_total" id="carga_horaria_total" placeholder="Carga horária total" style="background:#f0f0f0;">
                         <button type="submit" name="cadastrar_turma">Cadastrar Turma</button>
                     </form>
                     <table>
@@ -1363,6 +1363,3 @@ if ($tipo_user == 'portaria') {
 </body>
 
 </html>
-
-
-
