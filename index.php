@@ -118,8 +118,11 @@ if ($tipo_user == 'aluno') {
         $id_curricular = LimpaPost($_POST['id_curricular']);
         $turno = LimpaPost($_POST['turno']);
         $modalidade = LimpaPost($_POST['modalidade']);
-        $data_solicitacao = $_POST['data_solicitacao'];
-        $hora_solicitacao = $_POST['hora_solicitacao'];
+        $data_solicitacao = date('Y-m-d');
+        $hora_solicitacao = date('H:i:s');
+        if (empty($data_solicitacao) || empty($hora_solicitacao)) {
+            $msg = "Erro interno: não foi possível gerar data/hora da solicitação.";
+        }
         $motivo = $_POST['motivo'];
         $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
 
@@ -700,11 +703,9 @@ if ($tipo_user == 'portaria') {
                         <input type="text" value="<?php echo htmlspecialchars($user['turma_nome'] ?? 'Não matriculado'); ?>" readonly>
 
                         <label>Data da Solicitação:</label>
-                        <input type="date" name="data_solicitacao" required>
-
+                        <input type="text" value="<?php echo date('d/m/Y'); ?>" readonly>
                         <label>Hora da Solicitação:</label>
-                        <input type="time" name="hora_solicitacao" required>
-
+                        <input type="text" value="<?php echo date('H:i'); ?>" readonly>
                         <label>Motivo da Saída:</label>
                         <select name="motivo" id="motivo" required onchange="toggleOutro()">
                             <option value="">Selecione o motivo</option>
@@ -1153,7 +1154,10 @@ if ($tipo_user == 'portaria') {
                                         <input type="hidden" name="id_aluno" value="<?php echo $aluno['id_aluno']; ?>">
 
                                         <label>Telefone do Responsável:</label>
-                                        <input type="text" name="contato_responsavel" value="<?php echo htmlspecialchars($aluno['contato_responsavel'] ?? ''); ?>" placeholder="(00) 00000-0000" <?php echo !empty($aluno['contato_responsavel']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
+                                        <input type="text" name="contato_responsavel" value="<?php echo htmlspecialchars($user['contato_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                            readonly
+                                            style="background:#f0f0f0;" placeholder="(00) 00000-0000" <?php echo !empty($aluno['contato_responsavel']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
+
 
                                         <label>Turma:</label>
                                         <select name="id_turma" <?php echo !empty($aluno['turma_nome']) ? 'disabled style="background:#f0f0f0;"' : 'required'; ?>>
