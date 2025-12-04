@@ -224,7 +224,6 @@ if (isset($_POST['logar'])) {
             $aluno = $stmt->fetch();
 
             if ($aluno) {
-                echo "Debug: Aluno encontrado: " . $aluno['nome'] . "<br>";
                 if (password_verify($senha, $aluno['senha_hash'])) {
                     $_SESSION['id'] = $aluno['id_aluno'];
                     $_SESSION['nome'] = $aluno['nome'];
@@ -236,15 +235,12 @@ if (isset($_POST['logar'])) {
                     $msg_type = "error";
                     $usuario_encontrado = true;
                 }
-            } else {
-                echo "Debug: Nenhum aluno encontrado<br>";
             }
         } catch (PDOException $e) {
             error_log("Erro ao buscar aluno: " . $e->getMessage());
         }
 
         if (!$usuario_encontrado && $aluno === false) {
-            echo "Debug: Procurando funcionário<br>";
             try {
                 $stmt = $conn->prepare("SELECT * FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
                 $stmt->execute([$cpf_formatado, $cpf_limpo]);
@@ -252,7 +248,6 @@ if (isset($_POST['logar'])) {
                 $func = $stmt->fetch();
 
                 if ($func) {
-                    echo "Debug: Funcionário encontrado: " . $func['nome'] . "<br>";
                     if (password_verify($senha, $func['senha_hash'])) {
                         $_SESSION['id'] = $func['id_funcionario'];
                         $_SESSION['nome'] = $func['nome'];
@@ -264,8 +259,6 @@ if (isset($_POST['logar'])) {
                         $msg_type = "error";
                         $usuario_encontrado = true;
                     }
-                } else {
-                    echo "Debug: Nenhum funcionário encontrado<br>";
                 }
             } catch (PDOException $e) {
                 error_log("Erro ao buscar funcionário: " . $e->getMessage());
