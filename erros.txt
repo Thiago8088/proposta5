@@ -1,0 +1,5 @@
+Contato do responsavel colocar ele para auuto preenchimento para validar automatico,
+na parte de solicitar colocar para preencher automatico a data da solicitação e a hora da solicitação.
+na parte do aluno quando eu envio uma solicitação ele ta um erro erro ao enviar solicitação:SQLSTATE[42S22];Column not found: 1050 Unknown column 'data_solicitação' in 'fiel list'
+colocar uma forma para o para cadastrar o telefone do aluno
+Quando parte do intrutor trocar o nome da minhas turmas e colocas todas as turmas, e quando clicar em ver alunos vai aparecer todos os alunos e o aluno que solicitou para ir embora

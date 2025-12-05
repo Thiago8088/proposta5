@@ -18,7 +18,7 @@ CREATE TABLE turma (
 CREATE TABLE unidade_curricular (
     id_curricular INT PRIMARY KEY AUTO_INCREMENT,
     nome VARCHAR(100) NOT NULL,
-    carga_horaria TIME NOT NULL,
+    carga_horaria INT NOT NULL,
     id_curso INT NOT NULL,
     FOREIGN KEY(id_curso) REFERENCES curso(id_curso)
 );
@@ -30,8 +30,8 @@ CREATE TABLE aluno (
     cpf CHAR(15) NOT NULL,
     celular CHAR(13) NOT NULL,
     senha_hash VARCHAR(255) NOT NULL,
-    contato_responsavel CHAR(11) NULL,
-    contato_empresa CHAR(11) NULL,
+    contato_responsavel CHAR(15) NULL,
+    contato_empresa CHAR(15) NULL,
     data_nascimento DATE NOT NULL
 );
 

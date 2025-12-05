@@ -154,10 +154,6 @@ if ($tipo_user == 'aluno') {
     $ucs = $conn->query("SELECT uc.* FROM unidade_curricular uc JOIN turma t ON uc.id_curso = t.id_curso JOIN matricula m ON t.id_turma = m.id_turma WHERE m.id_aluno = " . $user['id_aluno'])->fetchAll();
 }
 
-
-// LÓGICA PEDAGÓGICO
-
-
 $msg_type = "";
 
 
@@ -204,7 +200,6 @@ if ($tipo_user == 'aluno') {
 
 
 // LÓGICA PEDAGÓGICO
-
 
 if ($tipo_user == 'pedagógico') {
     if (isset($_POST['autorizar_saida'])) {
@@ -357,8 +352,8 @@ if ($tipo_user == 'pedagógico') {
     }
 
     if (isset($_POST['deletar_turma'])) {
-        $id_turma = $_POST['id_turma'];
         try {
+            $id_turma = $_POST['id_turma'];
             $stmt = $conn->prepare("DELETE FROM turma WHERE id_turma = ?");
             $stmt->execute([$id_turma]);
             $msg = "Turma excluída!";
@@ -1021,7 +1016,7 @@ if ($tipo_user == 'portaria') {
                             <?php endforeach; ?>
                         </select>
                         <input type="text" name="nome_uc" placeholder="Nome da UC" required>
-                        <input type="number" name="carga_horaria" placeholder="Carga horária (horas)" required min="1">
+                        <input type="text" name="carga_horaria" placeholder="Carga horária (horas)" required min="1">
                         <button type="submit" name="cadastrar_uc">Cadastrar UC</button>
                     </form>
                     <table>
@@ -1107,8 +1102,9 @@ if ($tipo_user == 'portaria') {
                                     <td colspan="5">
                                         <form method="POST" style="display:flex; gap:10px; align-items:center;">
                                             <input type="hidden" name="id_turma" value="<?php echo $t['id_turma']; ?>">
-                                            <input type="text" name="nome_turma" value="<?php echo htmlspecialchars($t['nome']); ?>" required style="flex:2;">
-                                            <input type="number" name="carga_horaria_total" value="<?php echo $t['carga_horaria_total'] ?? 0; ?>" required min="0" style="flex:1;">
+                                            <input type="text" style="color: black; width: 150px;border-radius: 3px; cursor: pointer;" name="nome_turma" value="<?php echo htmlspecialchars($t['nome']); ?>" placeholder="Rescreva o nome da Turma" required style="flex:2;">
+                                            <input type="number" style="color: black;
+                                            width: 150px; border-radius: 3px; cursor: pointer;" name="carga_horaria_total" value="<?php echo $t['carga_horaria_total'] ?? 0; ?>" placeholder="Rescreva a nova Carga horaria" required min="0" style="flex:1;">
                                             <button type="submit" name="editar_turma" style="background: #28a745; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">Salvar</button>
                                             <button type="button" onclick="ocultarEdicao('turma', <?php echo $t['id_turma']; ?>)" style="background: #6c757d; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">Cancelar</button>
                                         </form>
@@ -1155,7 +1151,6 @@ if ($tipo_user == 'portaria') {
 
                                         <label>Telefone do Responsável:</label>
                                         <input type="text" name="contato_responsavel" value="<?php echo htmlspecialchars($user['contato_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                            readonly
                                             style="background:#f0f0f0;" placeholder="(00) 00000-0000" <?php echo !empty($aluno['contato_responsavel']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
 
 
