@@ -721,6 +721,7 @@ if ($tipo_user == 'portaria') {
         <?php endif; ?>
 
         <!-- ALUNO -->
+        <!-- ALUNO -->
         <?php if ($tipo_user == 'aluno'): ?>
             <div id="info" class="section">
                 <div class="container">
@@ -758,6 +759,57 @@ if ($tipo_user == 'portaria') {
                         <label>Turno:</label>
                         <select name="turno" required>
                             <option value="">Selecione o turno</option>
+                            <option value="manhã">Manhã</option>
+                            <option value="tarde">Tarde</option>
+                            <option value="noite">Noite</option>
+                        </select>
+
+                        <label>Modalidade:</label>
+                        <select name="modalidade" required>
+                            <option value="">Selecione a modalidade</option>
+                            <option value="presencial">Presencial</option>
+                            <option value="EAD">EAD</option>
+                            <option value="dual">Dual</option>
+                        </select>
+
+                        <label>Turma:</label>
+                        <input type="text" value="<?php echo htmlspecialchars($user['turma_nome'] ?? 'Não matriculado'); ?>" readonly>
+
+                        <label>Data da Solicitação:</label>
+                        <input type="text" value="<?php echo date('d/m/Y'); ?>" readonly>
+
+                        <label>Hora da Solicitação:</label>
+                        <input type="text" value="<?php echo date('H:i'); ?>" readonly>
+
+                        <label>Motivo da Saída:</label>
+                        <select name="motivo" id="motivo" required onchange="toggleOutro()">
+                            <option value="">Selecione o motivo</option>
+                            <option value="1">Consulta médica</option>
+                            <option value="2">Consulta odontológica</option>
+                            <option value="3">Exames médicos</option>
+                            <option value="4">Problemas de saúde</option>
+                            <option value="5">Solicitação da empresa</option>
+                            <option value="6">Solicitação da família</option>
+                            <option value="7">Viagem particular</option>
+                            <option value="8">Viagem a trabalho</option>
+                            <option value="9">Treinamento a trabalho</option>
+                            <option value="10">Outro</option>
+                        </select>
+
+                        <div id="motivo_outro_div" style="display: none;">
+                            <label>Descreva o motivo:</label>
+                            <textarea name="motivo_outro" rows="3" placeholder="Descreva detalhadamente o motivo da saída"></textarea>
+                        </div>
+
+                        <button type="submit" name="solicitar_saida">Enviar Solicitação</button>
+                    </form>
+                </div>
+            </div>
+
+            <div id="frequencia" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Minha Frequência</h3>
+                    <p>Sistema de frequência em desenvolvimento.</p>
                 </div>
             </div>
         <?php endif; ?>
@@ -852,40 +904,6 @@ if ($tipo_user == 'portaria') {
                                         <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Responsável Recusou</button>
                                     </form>
                                 </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- AGUARDANDO INSTRUTOR -->
-            <div id="aguardando_instrutor" class="section" style="display:none;">
-                <div class="container">
-                    <h3>Aguardando Instrutor</h3>
-                    <?php
-                    $inst = $conn->query("
-                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
-                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
-                        FROM solicitacao s
-                        JOIN aluno a ON s.id_aluno = a.id_aluno
-                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                        LEFT JOIN turma t ON m.id_turma = t.id_turma
-                        WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
-                        ORDER BY s.data_solicitada DESC
-                    ")->fetchAll();
-
-                    if (empty($inst)): ?>
-                        <p>Nenhuma solicitação aguardando instrutor.</p>
-                    <?php else: ?>
-                        <?php foreach ($inst as $s): 
-                            $parsed = parseMotivo($s['motivo']);
-                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                        ?>
-                            <div class="solicitacao-card">
-                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
-                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
