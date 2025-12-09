@@ -81,6 +81,7 @@ body {
     background-color: #c82333;
 }
 
+
 .main-content {
     margin-left: 250px;
     padding: 30px;
@@ -323,6 +324,15 @@ table tr:hover {
     animation: fadeIn 0.5s ease-in-out;
 }
 
+#alunos {
+    width: 60%;
+    z-index: 1;
+    position: relative;
+    left: 500px;
+    bottom: 950px;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -334,6 +344,7 @@ table tr:hover {
         transform: translateY(0);
     }
 }
+
 
 .list {
     margin-top: 30px;
@@ -441,6 +452,8 @@ table tr:hover {
         height: auto;
         position: relative;
     }
+
+
 
     .navbar-menu {
         display: none;

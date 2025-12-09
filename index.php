@@ -545,6 +545,10 @@ if ($tipo_user == 'instrutor') {
             $msg_type = "error";
         }
     }
+    if (isset($_POST['registrar_falta'])) {
+        $id_solicitacao = $_POST['id_solicitacao_falta'];
+        $id_aluno = $_POST['id_aluno_falta'];
+    }
 
     $turmas_instrutor = $conn->query("
         SELECT DISTINCT
@@ -614,12 +618,19 @@ if ($tipo_user == 'portaria') {
     <link rel="stylesheet" href="css/estilo.css">
     <script>
         function showSection(section) {
+            // Esconde todas as seções
             document.querySelectorAll('.section').forEach(sec => sec.style.display = 'none');
+
+            // Mostra a seção selecionada
             const sectionElement = document.getElementById(section);
             if (sectionElement) {
                 sectionElement.style.display = 'block';
             }
+
+            // Remove classe active de todos os links
             document.querySelectorAll('.navbar-menu a').forEach(link => link.classList.remove('active'));
+
+            // Adiciona classe active no link clicado
             if (event && event.target) {
                 event.target.classList.add('active');
             }
@@ -683,6 +694,33 @@ if ($tipo_user == 'portaria') {
             }
         }
 
+        function filtrarSolicitacoesPorTurma() {
+            const turmaId = document.getElementById('filtro_turma_solicitacao').value;
+            const cards = document.querySelectorAll('.solicitacao-card-instrutor');
+
+            cards.forEach(card => {
+                if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        function filtrarLiberadosPorTurma() {
+            const turmaId = document.getElementById('filtro_turma_liberados').value;
+            const cards = document.querySelectorAll('.aluno-liberado-card');
+
+            cards.forEach(card => {
+                if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        // Carrega a primeira seção ao iniciar
         window.addEventListener('DOMContentLoaded', function() {
             const firstSection = document.querySelector('.navbar-menu a');
             if (firstSection) {
@@ -722,6 +760,7 @@ if ($tipo_user == 'portaria') {
                 <?php elseif ($tipo_user == 'instrutor'): ?>
                     <a href="#" onclick="showSection('turmas_instrutor'); return false;">Minhas Turmas</a>
                     <a href="#" onclick="showSection('solicitacoes_instrutor'); return false;">Solicitações</a>
+                    <a href="#" onclick="showSection('alunos_liberados_instrutor'); return false;">Alunos Liberados</a>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
@@ -1579,9 +1618,10 @@ if ($tipo_user == 'portaria') {
         </div>
     </div>
 
+    <!-- SOLICITAÇÕES DO INSTRUTOR -->
     <div id="solicitacoes_instrutor" class="section" style="display:none;">
         <div class="container">
-            <h3>Solicitações para Liberação</h3>
+            <h3>Solicitações Pendentes</h3>
 
             <div style="margin-bottom: 20px;">
                 <label for="filtro_turma_solicitacao">Filtrar por Turma:</label>
@@ -1593,10 +1633,84 @@ if ($tipo_user == 'portaria') {
                 </select>
             </div>
 
+            <?php
+            $motivos_map = [
+                '1' => 'Consulta médica',
+                '2' => 'Consulta odontológica',
+                '3' => 'Exames médicos',
+                '4' => 'Problemas de saúde',
+                '5' => 'Solicitação da empresa',
+                '6' => 'Solicitação da família',
+                '7' => 'Viagem particular',
+                '8' => 'Viagem a trabalho',
+                '9' => 'Treinamento a trabalho'
+            ];
+
+            $solicitacoes_instrutor = $conn->query("
+            SELECT s.*, a.nome as aluno_nome, a.matricula, 
+                   t.id_turma, t.nome as turma_nome,
+                   DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+            FROM solicitacao s 
+            JOIN aluno a ON s.id_aluno = a.id_aluno 
+            JOIN matricula m ON a.id_aluno = m.id_aluno
+            JOIN turma t ON m.id_turma = t.id_turma
+            WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
+            ORDER BY s.data_solicitada DESC
+        ")->fetchAll();
+
+            if (empty($solicitacoes_instrutor)): ?>
+                <p>Nenhuma solicitação pendente no momento.</p>
+            <?php else: ?>
+                <?php foreach ($solicitacoes_instrutor as $s):
+                    $parsed = parseMotivo($s['motivo']);
+                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                    $status_cor = getStatusColor($s['status'], $s['motivo']);
+                ?>
+                    <div class="solicitacao-card solicitacao-card-instrutor"
+                        data-turma-id="<?php echo $s['id_turma']; ?>"
+                        style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                        <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome']); ?></p>
+                        <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                        <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+
+                        <div class="action-buttons">
+                            <form method="POST" style="display: inline;">
+                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
+                                <input type="hidden" name="acao_instrutor" value="autorizar">
+                                <button type="submit" name="instrutor_acao" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Autorizar</button>
+                            </form>
+                            <form method="POST" style="display: inline;">
+                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
+                                <input type="hidden" name="acao_instrutor" value="rejeitar">
+                                <button type="submit" name="instrutor_acao" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">Rejeitar</button>
+                            </form>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ALUNOS LIBERADOS - SEÇÃO SEPARADA -->
+    <div id="alunos_liberados_instrutor" class="section" style="display:none;">
+        <div class="container">
+            <h3>Alunos Liberados - Registro de Faltas</h3>
+
+            <div style="margin-bottom: 20px;">
+                <label for="filtro_turma_liberados">Filtrar por Turma:</label>
+                <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
+                    <option value="">Todas as Turmas</option>
+                    <?php foreach ($turmas_instrutor as $turma): ?>
+                        <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <script>
-                function filtrarSolicitacoesPorTurma() {
-                    const turmaId = document.getElementById('filtro_turma_solicitacao').value;
-                    const cards = document.querySelectorAll('.solicitacao-card-instrutor');
+                function filtrarLiberadosPorTurma() {
+                    const turmaId = document.getElementById('filtro_turma_liberados').value;
+                    const cards = document.querySelectorAll('.aluno-liberado-card');
 
                     cards.forEach(card => {
                         if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
@@ -1609,21 +1723,22 @@ if ($tipo_user == 'portaria') {
             </script>
 
             <?php
-            $solicitacoes_instrutor = $conn->query("
-                        SELECT s.*, a.nome as aluno_nome, a.matricula, uc.nome as uc_nome, 
-                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                               t.id_turma, t.nome as turma_nome
-                        FROM solicitacao s 
-                        JOIN aluno a ON s.id_aluno = a.id_aluno 
-                        JOIN matricula m ON a.id_aluno = m.id_aluno
-                        JOIN turma t ON m.id_turma = t.id_turma
-                        LEFT JOIN unidade_curricular uc ON s.id_curricular = uc.id_curricular 
-                        WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
-                        ORDER BY s.data_solicitada DESC
-                    ")->fetchAll();
+            $alunos_liberados_instrutor = $conn->query("
+                SELECT s.*, a.nome as aluno_nome, a.matricula, 
+                       t.id_turma, t.nome as turma_nome,
+                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                       DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as data_autorizada_fmt,
+                       DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                FROM solicitacao s 
+                JOIN aluno a ON s.id_aluno = a.id_aluno 
+                JOIN matricula m ON a.id_aluno = m.id_aluno
+                JOIN turma t ON m.id_turma = t.id_turma
+                WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                ORDER BY s.data_solicitada DESC
+            ")->fetchAll();
 
-            if (empty($solicitacoes_instrutor)): ?>
-                <p>Nenhuma solicitação pendente.</p>
+            if (empty($alunos_liberados_instrutor)): ?>
+                <p>Nenhum aluno liberado no momento.</p>
             <?php else: ?>
                 <?php
                 $motivos_map = [
@@ -1637,30 +1752,31 @@ if ($tipo_user == 'portaria') {
                     '8' => 'Viagem a trabalho',
                     '9' => 'Treinamento a trabalho'
                 ];
-                foreach ($solicitacoes_instrutor as $s):
-                    $parsed = parseMotivo($s['motivo']);
-                    $motivo_raw = $parsed['motivo'];
-                    $motivo_texto = (is_numeric($motivo_raw) && isset($motivos_map[$motivo_raw])) ? $motivos_map[$motivo_raw] : $motivo_raw;
+
+                foreach ($alunos_liberados_instrutor as $al):
+                    $parsed = parseMotivo($al['motivo']);
+                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                    $status_texto = getStatusText($al['status'], $al['motivo']);
                 ?>
-                    <div class="solicitacao-card solicitacao-card-instrutor" data-turma-id="<?php echo $s['id_turma']; ?>">
+                    <div class="solicitacao-card aluno-liberado-card" data-turma-id="<?php echo $al['id_turma']; ?>" style="border-left: 4px solid #28a745;">
                         <div class="solicitacao-header">
-                            <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                            <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
                         </div>
-                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome']); ?></p>
-                        <p><strong>UC:</strong> <?php echo htmlspecialchars($s['uc_nome']); ?></p>
+                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
                         <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                        <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                        <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
+                        <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
+
+                        <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
+                            <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
+                        <?php endif; ?>
+
+                        <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
 
                         <div class="action-buttons" style="margin-top:15px;">
                             <form method="POST" style="display:inline;">
-                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
-                                <input type="hidden" name="acao_instrutor" value="autorizar">
-                                <button type="submit" name="instrutor_acao" style="background:#28a745; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">Liberar Saída</button>
-                            </form>
-                            <form method="POST" style="display:inline; margin-left:10px;">
-                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
-                                <input type="hidden" name="acao_instrutor" value="rejeitar">
-                                <button type="submit" name="instrutor_acao" onclick="return confirm('Deseja realmente rejeitar esta solicitação?')" style="background:#dc3545; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;">Rejeitar</button>
+                                <input type="hidden" name="id_solicitacao_falta" value="<?php echo $al['id_solicitacao']; ?>">
+                                <input type="hidden" name="id_aluno_falta" value="<?php echo $al['id_aluno']; ?>">
                             </form>
                         </div>
                     </div>
