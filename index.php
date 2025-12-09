@@ -53,8 +53,41 @@ function logNotificacao($conn, $tipo, $destinatario, $mensagem, $status = 'envia
     }
 }
 
-function getStatusColor($status)
+function parseMotivo($string)
 {
+    $result = ['status' => '', 'codigo' => '', 'motivo' => ''];
+    if (preg_match('/STATUS:([^|]+)/', $string, $matches)) $result['status'] = $matches[1];
+    if (preg_match('/CODIGO:([^|]+)/', $string, $matches)) $result['codigo'] = $matches[1];
+    if (preg_match('/MOTIVO:(.+)$/', $string, $matches)) $result['motivo'] = $matches[1];
+    else $result['motivo'] = $string;
+    return $result;
+}
+
+function buildMotivo($status, $motivo, $codigo = '')
+{
+    $parts = [];
+    if (!empty($status)) $parts[] = "STATUS:" . $status;
+    if (!empty($codigo)) $parts[] = "CODIGO:" . $codigo;
+    if (!empty($motivo)) $parts[] = "MOTIVO:" . $motivo;
+    return implode('|', $parts);
+}
+
+function getStatusColor($status, $motivoField = '')
+{
+    if (!empty($motivoField)) {
+        $parsed = parseMotivo($motivoField);
+        if (!empty($parsed['status'])) {
+            switch ($parsed['status']) {
+                case 'aguardando_instrutor': return '#ffc107';
+                case 'aguardando_pedagogico': return '#17a2b8';
+                case 'aguardando_responsavel': return '#fd7e14';
+                case 'aguardando_portaria': return '#28a745';
+                case 'recusado_instrutor':
+                case 'recusado_responsavel': return '#dc3545';
+                case 'concluido': return '#28a745';
+            }
+        }
+    }
     switch ($status) {
         case 'solicitado':
             return '#ffc107';
@@ -69,8 +102,22 @@ function getStatusColor($status)
     }
 }
 
-function getStatusText($status)
+function getStatusText($status, $motivoField = '')
 {
+    if (!empty($motivoField)) {
+        $parsed = parseMotivo($motivoField);
+        if (!empty($parsed['status'])) {
+            switch ($parsed['status']) {
+                case 'aguardando_instrutor': return 'Aguardando Instrutor';
+                case 'aguardando_pedagogico': return 'Aguardando Pedagógico';
+                case 'aguardando_responsavel': return 'Aguardando Responsável';
+                case 'aguardando_portaria': return 'Aguardando Portaria';
+                case 'recusado_instrutor': return 'Recusado pelo Instrutor';
+                case 'recusado_responsavel': return 'Recusado pelo Responsável';
+                case 'concluido': return 'Concluído';
+            }
+        }
+    }
     switch ($status) {
         case 'solicitado':
             return 'Aguardando Responsável';
@@ -128,10 +175,11 @@ if ($tipo_user == 'aluno') {
             $msg_type = "error";
         } else {
             $motivo_final = $motivo == '10' ? $motivo_outro : $motivo;
+            $motivo_completo = buildMotivo('aguardando_instrutor', $motivo_final);
 
             try {
-                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitada, status) VALUES (?, ?, ?, NOW(), 'autorizado')");
-                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_final]);
+                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitada, status) VALUES (?, ?, ?, NOW(), 'solicitado')");
+                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_completo]);
                 $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
                 $msg_type = "success";
 
@@ -156,17 +204,56 @@ if ($tipo_user == 'pedagógico') {
         $id_solicitacao = $_POST['id_solicitacao'];
         $acao = $_POST['acao'];
 
-        if ($acao == 'autorizar') {
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'concluido', data_autorizada = NOW(), id_autorizacao = ? WHERE id_solicitacao = ?");
-            $stmt->execute([$user['id_funcionario'], $id_solicitacao]);
+        // Fetch current status/motivo
+        $stmt_current = $conn->prepare("SELECT motivo, status FROM solicitacao WHERE id_solicitacao = ?");
+        $stmt_current->execute([$id_solicitacao]);
+        $current = $stmt_current->fetch();
+        $parsed = parseMotivo($current['motivo']);
+        $original_motivo = $parsed['motivo'];
+        $current_status_detail = $parsed['status'];
 
-            $msg = "Saída autorizada com sucesso!";
-            $msg_type = "success";
-        } else {
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada' WHERE id_solicitacao = ?");
-            $stmt->execute([$id_solicitacao]);
-            $msg = "Solicitação rejeitada!";
-            $msg_type = "error";
+        if ($current_status_detail == 'aguardando_pedagogico') {
+            if ($acao == 'autorizar') {
+                // Move to aguardando_responsavel
+                $new_motivo = buildMotivo('aguardando_responsavel', $original_motivo);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', motivo = ?, id_autorizacao = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $user['id_funcionario'], $id_solicitacao]);
+                $msg = "Solicitação aceita! Aguardando responsável.";
+                $msg_type = "success";
+            } else {
+                // Reject
+                $new_motivo = buildMotivo('recusado_pedagogico', $original_motivo);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada', motivo = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $id_solicitacao]);
+                $msg = "Solicitação rejeitada!";
+                $msg_type = "error";
+            }
+        } elseif ($current_status_detail == 'aguardando_responsavel') {
+            if ($acao == 'autorizar') {
+                // Responsible Accepted -> Generate Code -> aguardando_portaria
+                $codigo = gerarCodigoLiberacao();
+                $new_motivo = buildMotivo('aguardando_portaria', $original_motivo, $codigo);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'liberado', motivo = ?, codigo_liberacao = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $codigo, $id_solicitacao]);
+                
+                // Send WhatsApp with code
+                $stmt_aluno = $conn->prepare("SELECT a.* FROM aluno a JOIN solicitacao s ON a.id_aluno = s.id_aluno WHERE s.id_solicitacao = ?");
+                $stmt_aluno->execute([$id_solicitacao]);
+                $dados_aluno = $stmt_aluno->fetch();
+                if (!empty($dados_aluno['contato_responsavel'])) {
+                     enviarWhatsApp($dados_aluno['contato_responsavel'], "Saída autorizada! Código de liberação: " . $codigo);
+                }
+
+                $msg = "Responsável aceitou! Código gerado: $codigo. Aguardando portaria.";
+                $msg_type = "success";
+            } else {
+                // Responsible Rejected
+                $new_motivo = buildMotivo('recusado_responsavel', $original_motivo);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada', motivo = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $id_solicitacao]);
+                $msg = "Responsável recusou! Solicitação encerrada.";
+                $msg_type = "error";
+            }
         }
     }
 
@@ -412,24 +499,29 @@ if ($tipo_user == 'instrutor') {
         $id_solicitacao = $_POST['id_solicitacao'];
         $acao = $_POST['acao_instrutor'];
 
+        // Fetch current motive to preserve it
+        $stmt_current = $conn->prepare("SELECT motivo FROM solicitacao WHERE id_solicitacao = ?");
+        $stmt_current->execute([$id_solicitacao]);
+        $current_motivo_raw = $stmt_current->fetchColumn();
+        $parsed = parseMotivo($current_motivo_raw);
+        $original_motivo = $parsed['motivo'];
+
         if ($acao == 'autorizar') {
-            $codigo = gerarCodigoLiberacao();
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'liberado', data_liberacao_instrutor = NOW(), codigo_liberacao = ? WHERE id_solicitacao = ?");
-            $stmt->execute([$codigo, $id_solicitacao]);
+            // Update to aguardando_pedagogico
+            $new_motivo = buildMotivo('aguardando_pedagogico', $original_motivo);
+            
+            // Use data_autorizada for instrutor time as requested
+            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', data_autorizada = NOW(), motivo = ? WHERE id_solicitacao = ?");
+            $stmt->execute([$new_motivo, $id_solicitacao]);
 
-            $stmt_aluno = $conn->prepare("SELECT a.*, s.motivo FROM aluno a JOIN solicitacao s ON a.id_aluno = s.id_aluno WHERE s.id_solicitacao = ?");
-            $stmt_aluno->execute([$id_solicitacao]);
-            $dados_aluno = $stmt_aluno->fetch();
-
-            if (!empty($dados_aluno['celular'])) {
-                enviarWhatsApp($dados_aluno['celular'], "Sua saída foi autorizada pelo instrutor! Aguarde aprovação da pedagógica.");
-            }
-
-            $msg = "Saída liberada! Aguardando aprovação da pedagógica.";
+            $msg = "Solicitação autorizada! Aguardando pedagógico.";
             $msg_type = "success";
         } else {
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada' WHERE id_solicitacao = ?");
-            $stmt->execute([$id_solicitacao]);
+            // Update to recusado_instrutor
+            $new_motivo = buildMotivo('recusado_instrutor', $original_motivo);
+            
+            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada', motivo = ? WHERE id_solicitacao = ?");
+            $stmt->execute([$new_motivo, $id_solicitacao]);
             $msg = "Solicitação rejeitada!";
             $msg_type = "error";
         }
@@ -467,10 +559,21 @@ if ($tipo_user == 'portaria') {
             $solicitacao = $stmt->fetch();
 
             if ($solicitacao) {
-                $stmt_update = $conn->prepare("UPDATE solicitacao SET data_saida = NOW(), status = 'concluido' WHERE id_solicitacao = ?");
-                $stmt_update->execute([$solicitacao['id_solicitacao']]);
-                $msg = "Saída registrada para " . $solicitacao['nome'] . " (Matrícula: " . $solicitacao['matricula'] . ")";
-                $msg_type = "success";
+                // Check if detailed status is aguardando_portaria
+                $parsed = parseMotivo($solicitacao['motivo']);
+                if ($parsed['status'] == 'aguardando_portaria') {
+                    // Update to concluido
+                    $new_motivo = buildMotivo('concluido', $parsed['motivo'], $codigo);
+                    
+                    $stmt_update = $conn->prepare("UPDATE solicitacao SET data_saida = NOW(), status = 'concluido', motivo = ? WHERE id_solicitacao = ?");
+                    $stmt_update->execute([$new_motivo, $solicitacao['id_solicitacao']]);
+                    
+                    $msg = "Saída registrada para " . $solicitacao['nome'] . " (Matrícula: " . $solicitacao['matricula'] . ")";
+                    $msg_type = "success";
+                } else {
+                    $msg = "Status inválido para liberação!";
+                    $msg_type = "error";
+                }
             } else {
                 $msg = "Código inválido ou já utilizado!";
                 $msg_type = "error";
@@ -586,14 +689,19 @@ if ($tipo_user == 'portaria') {
                     <a href="#" onclick="showSection('info'); return false;">Informações</a>
                     <a href="#" onclick="showSection('frequencia'); return false;">Minha Frequência</a>
                 <?php elseif ($tipo_user == 'pedagógico'): ?>
-                    <a href="#" onclick="showSection('dashboard'); return false;">Geral</a>
                     <a href="#" onclick="showSection('solicitacoes'); return false;">Solicitações</a>
+                    <a href="#" onclick="showSection('aguardando_responsavel'); return false;">Aguardando Responsável</a>
+                    <a href="#" onclick="showSection('aguardando_instrutor'); return false;">Aguardando Instrutor</a>
+                    <a href="#" onclick="showSection('aguardando_portaria'); return false;">Aguardando Portaria</a>
+                    <a href="#" onclick="showSection('solicitacoes_liberadas'); return false;">Solicitações Liberadas</a>
+                    <a href="#" onclick="showSection('solicitacoes_recusadas'); return false;">Solicitações Recusadas</a>
+                    <a href="#" onclick="showSection('alunos_liberados_turma'); return false;">Ver Alunos Liberados</a>
+                    <a href="#" onclick="showSection('alunos_recusados_turma'); return false;">Ver Alunos Recusados</a>
                     <a href="#" onclick="showSection('cursos'); return false;">Gerenciar Cursos</a>
                     <a href="#" onclick="showSection('ucs'); return false;">Gerenciar UCs</a>
                     <a href="#" onclick="showSection('turmas'); return false;">Gerenciar Turmas</a>
                     <a href="#" onclick="showSection('alunos'); return false;">Gerenciar Alunos</a>
                 <?php elseif ($tipo_user == 'instrutor'): ?>
-                    <a href="#" onclick="showSection('dashboard_instrutor'); return false;">Geral</a>
                     <a href="#" onclick="showSection('turmas_instrutor'); return false;">Minhas Turmas</a>
                     <a href="#" onclick="showSection('solicitacoes_instrutor'); return false;">Solicitações</a>
                 <?php endif; ?>
@@ -650,288 +758,414 @@ if ($tipo_user == 'portaria') {
                         <label>Turno:</label>
                         <select name="turno" required>
                             <option value="">Selecione o turno</option>
-                            <option value="manhã">Manhã</option>
-                            <option value="tarde">Tarde</option>
-                            <option value="noite">Noite</option>
-                        </select>
-
-                        <label>Modalidade:</label>
-                        <select name="modalidade" required>
-                            <option value="">Selecione a modalidade</option>
-                            <option value="presencial">Presencial</option>
-                            <option value="EAD">EAD</option>
-                            <option value="dual">Dual</option>
-                        </select>
-
-                        <label>Turma:</label>
-                        <input type="text" value="<?php echo htmlspecialchars($user['turma_nome'] ?? 'Não matriculado'); ?>" readonly>
-
-                        <label>Data da Solicitação:</label>
-                        <input type="text" value="<?php echo date('d/m/Y'); ?>" readonly>
-                        <label>Hora da Solicitação:</label>
-                        <input type="text" value="<?php echo date('H:i'); ?>" readonly>
-                        <label>Motivo da Saída:</label>
-                        <select name="motivo" id="motivo" required onchange="toggleOutro()">
-                            <option value="">Selecione o motivo</option>
-                            <option value="1">Consulta médica</option>
-                            <option value="2">Consulta odontológica</option>
-                            <option value="3">Exames médicos</option>
-                            <option value="4">Problemas de saúde</option>
-                            <option value="5">Solicitação da empresa</option>
-                            <option value="6">Solicitação da família</option>
-                            <option value="7">Viagem particular</option>
-                            <option value="8">Viagem a trabalho</option>
-                            <option value="9">Treinamento a trabalho</option>
-                            <option value="10">Outro</option>
-                        </select>
-
-                        <div id="motivo_outro_div" style="display: none;">
-                            <label>Descreva o motivo:</label>
-                            <textarea name="motivo_outro" rows="3" placeholder="Descreva detalhadamente o motivo da saída"></textarea>
-                        </div>
-
-                        <button type="submit" name="solicitar_saida">Enviar Solicitação</button>
-                    </form>
-                </div>
-            </div>
-
-            <div id="frequencia" class="section" style="display:none;">
-                <div class="container">
-                    <h3>Minha Frequência</h3>
-                    <p>Sistema de frequência em desenvolvimento.</p>
                 </div>
             </div>
         <?php endif; ?>
 
         <!-- PEDAGÓGICO -->
         <?php if ($tipo_user == 'pedagógico'): ?>
-            <div id="dashboard" class="section">
+            <?php
+            // Mapa de motivos para usar em todas as seções
+            $motivos_map = [
+                '1' => 'Consulta médica', '2' => 'Consulta odontológica', '3' => 'Exames médicos',
+                '4' => 'Problemas de saúde', '5' => 'Solicitação da empresa', '6' => 'Solicitação da família',
+                '7' => 'Viagem particular', '8' => 'Viagem a trabalho', '9' => 'Treinamento a trabalho'
+            ];
+            ?>
+
+            <!-- SOLICITAÇÕES -->
+            <div id="solicitacoes" class="section">
                 <div class="container">
-                    <h1 style="text-align: center;">GERAL</h1>
-                    <div class="dashboard-grid">
-                        <div class="card" onclick="mostrarSolicitacoes('todas')">
-                            <h3>Total de Solicitações</h3>
-                            <p><?php echo $total_solicitacoes; ?></p>
-                        </div>
-                        <div class="card" onclick="mostrarSolicitacoes('responsavel')">
-                            <h3>Aguardando Responsável</h3>
-                            <p><?php echo $aguardando_responsavel; ?></p>
-                        </div>
-                        <div class="card" onclick="mostrarSolicitacoes('instrutor')">
-                            <h3>Aguardando Instrutor</h3>
-                            <p><?php echo $aguardando_instrutor; ?></p>
-                        </div>
-                        <div class="card" onclick="mostrarSolicitacoes('portaria')">
-                            <h3>Aguardando Portaria</h3>
-                            <p><?php echo $aguardando_portaria; ?></p>
-                        </div>
-                        <div class="card" onclick="mostrarSolicitacoes('liberadas')">
-                            <h3>Solicitações Liberadas</h3>
-                            <p><?php echo $solicitacoes_liberadas; ?></p>
-                        </div>
-                        <div class="card" onclick="showSection('alunos')">
-                            <h3>Alunos Incompletos</h3>
-                            <p><?php echo count($alunos_incompletos); ?></p>
-                        </div>
-                    </div>
-
-                    <div id="solicitacoes-todas" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
-                        <h3>Todas as Solicitações</h3>
-                        <?php
-                        $todas = $conn->query("
-                            SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
-                                   DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao,
-                                   DATE_FORMAT(s.data_saida, '%H:%i') as hora_saida
-                            FROM solicitacao s
-                            JOIN aluno a ON s.id_aluno = a.id_aluno
-                            ORDER BY s.id_solicitacao DESC
-                        ")->fetchAll();
-                        if (empty($todas)): ?>
-                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações cadastradas.</p>
-                        <?php else: ?>
-                            <?php foreach ($todas as $sol): ?>
-                                <div class="solicitacao-detalhe">
-                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
-                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao'] ?? 'Pendente'; ?></p>
-                                    <p><strong>Hora Saída:</strong> <?php echo $sol['hora_saida'] ?? 'Pendente'; ?></p>
-                                    <p><strong>Status:</strong> <span style="color: <?php echo getStatusColor($sol['status']); ?>;"><?php echo getStatusText($sol['status']); ?></span></p>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <div id="solicitacoes-responsavel" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
-                        <h3>Aguardando Responsável</h3>
-                        <?php
-                        $resp = $conn->query("
-                            SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt
-                            FROM solicitacao s
-                            JOIN aluno a ON s.id_aluno = a.id_aluno
-                            WHERE s.status = 'solicitado'
-                            ORDER BY s.id_solicitacao DESC
-                        ")->fetchAll();
-                        if (empty($resp)): ?>
-                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações aguardando responsável.</p>
-                        <?php else: ?>
-                            <?php foreach ($resp as $sol): ?>
-                                <div class="solicitacao-detalhe">
-                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <div id="solicitacoes-instrutor" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
-                        <h3>Aguardando Instrutor</h3>
-                        <?php
-                        $inst = $conn->query("
-                            SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
-                                   DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao
-                            FROM solicitacao s
-                            JOIN aluno a ON s.id_aluno = a.id_aluno
-                            WHERE s.status = 'autorizado'
-                            ORDER BY s.id_solicitacao DESC
-                        ")->fetchAll();
-                        if (empty($inst)): ?>
-                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações aguardando instrutor.</p>
-                        <?php else: ?>
-                            <?php foreach ($inst as $sol): ?>
-                                <div class="solicitacao-detalhe">
-                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
-                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <div id="solicitacoes-portaria" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
-                        <h3>Aguardando Portaria</h3>
-                        <?php
-                        $port = $conn->query("
-                            SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
-                                   DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao
-                            FROM solicitacao s
-                            JOIN aluno a ON s.id_aluno = a.id_aluno
-                            WHERE s.status = 'liberado'
-                            ORDER BY s.id_solicitacao DESC
-                        ")->fetchAll();
-                        if (empty($port)): ?>
-                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações aguardando portaria.</p>
-                        <?php else: ?>
-                            <?php foreach ($port as $sol): ?>
-                                <div class="solicitacao-detalhe">
-                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
-                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <div id="solicitacoes-liberadas" class="solicitacoes-detalhadas" style="display:none; margin-top: 30px;">
-                        <h3>Solicitações Concluídas</h3>
-                        <?php
-                        $lib = $conn->query("
-                            SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                   DATE_FORMAT(s.data_solicitada, '%H:%i') as hora_solicitacao_fmt,
-                                   DATE_FORMAT(s.data_autorizada, '%H:%i') as hora_autorizacao,
-                                   DATE_FORMAT(s.data_saida, '%H:%i') as hora_saida
-                            FROM solicitacao s
-                            JOIN aluno a ON s.id_aluno = a.id_aluno
-                            WHERE s.status IN ('liberado', 'concluido')
-                            ORDER BY s.id_solicitacao DESC
-                        ")->fetchAll();
-                        if (empty($lib)): ?>
-                            <p style="text-align:center; color:#666; padding:20px;">Não há solicitações liberadas/concluídas.</p>
-                        <?php else: ?>
-                            <?php foreach ($lib as $sol): ?>
-                                <div class="solicitacao-detalhe">
-                                    <p><strong>Aluno:</strong> <?php echo htmlspecialchars($sol['aluno_nome']); ?> - <strong>Matrícula:</strong> <?php echo htmlspecialchars($sol['matricula']); ?></p>
-                                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($sol['motivo']); ?></p>
-                                    <p><strong>Data/Hora Solicitação:</strong> <?php echo date('d/m/Y H:i', strtotime($sol['data_solicitada'])); ?></p>
-                                    <p><strong>Hora Autorização:</strong> <?php echo $sol['hora_autorizacao']; ?></p>
-                                    <p><strong>Hora Saída:</strong> <?php echo $sol['hora_saida'] ?? 'Aguardando'; ?></p>
-                                    <p><strong>Status:</strong> <span style="color: <?php echo getStatusColor($sol['status']); ?>;"><?php echo getStatusText($sol['status']); ?></span></p>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div id="solicitacoes" class="section" style="display:none;">
-                <div class="container">
-                    <h3>Solicitações de Saída</h3>
+                    <h3>Todas as Solicitações Pendentes</h3>
                     <?php
-                    $solicitacoes = $conn->query("
-                        SELECT s.*, a.nome as aluno_nome, a.matricula, uc.nome as uc_nome, t.nome as turma_nome, c.nome as curso_nome
+                    $todas_solicitacoes = $conn->query("
+                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
                         FROM solicitacao s
                         JOIN aluno a ON s.id_aluno = a.id_aluno
-                        LEFT JOIN unidade_curricular uc ON s.id_curricular = uc.id_curricular
                         LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
                         LEFT JOIN turma t ON m.id_turma = t.id_turma
-                        LEFT JOIN curso c ON t.id_curso = c.id_curso
                         WHERE s.status IN ('solicitado', 'autorizado', 'liberado')
-                        ORDER BY s.id_solicitacao DESC
+                        ORDER BY s.data_solicitada DESC
                     ")->fetchAll();
 
-                    if (empty($solicitacoes)): ?>
-                        <p>Nenhuma solicitação encontrada.</p>
+                    if (empty($todas_solicitacoes)): ?>
+                        <p>Nenhuma solicitação pendente no momento.</p>
                     <?php else: ?>
-                        <?php foreach ($solicitacoes as $s): ?>
-                            <div class="solicitacao-card">
-                                <div class="solicitacao-header">
-                                    <h3><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h3>
-                                    <span class="status-badge" style="background-color: <?php echo getStatusColor($s['status']); ?>;">
-                                        <?php echo getStatusText($s['status']); ?>
-                                    </span>
-                                </div>
-                                <div class="info-item">
-                                    <strong>Curso:</strong> <?php echo htmlspecialchars($s['curso_nome'] ?? 'N/A'); ?>
-                                </div>
-                                <div class="info-item">
-                                    <strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?>
-                                </div>
-                                <div class="info-item">
-                                    <strong>UC:</strong> <?php echo htmlspecialchars($s['uc_nome'] ?? 'N/A'); ?>
-                                </div>
-                                <div class="info-item">
-                                    <strong>Data/Hora:</strong> <?php echo date('d/m/Y H:i', strtotime($s['data_solicitada'])); ?>
-                                </div>
-                                <div class="info-item">
-                                    <strong>Motivo:</strong> <?php echo htmlspecialchars($s['motivo']); ?>
-                                </div>
-                                <?php if ($s['status'] == 'solicitado'): ?>
-                                    <div class="action-buttons">
-                                        <form method="POST" style="display: inline;">
-                                            <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
-                                            <input type="hidden" name="acao" value="autorizar">
-                                            <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Autorizar</button>
-                                        </form>
-                                        <form method="POST" style="display: inline;">
-                                            <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
-                                            <input type="hidden" name="acao" value="rejeitar">
-                                            <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">Rejeitar</button>
-                                        </form>
-                                    </div>
-                                <?php endif; ?>
+                        <?php foreach ($todas_solicitacoes as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                            $status_texto = getStatusText($s['status'], $s['motivo']);
+                            $status_cor = getStatusColor($s['status'], $s['motivo']);
+                        ?>
+                            <div class="solicitacao-card" style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                                <p><strong>Status:</strong> <span style="color: <?php echo $status_cor; ?>; font-weight: bold;"><?php echo $status_texto; ?></span></p>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
             </div>
 
+            <!-- AGUARDANDO RESPONSÁVEL -->
+            <div id="aguardando_responsavel" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Aguardando Responsável</h3>
+                    <?php
+                    $resp = $conn->query("
+                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                        FROM solicitacao s
+                        JOIN aluno a ON s.id_aluno = a.id_aluno
+                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                        LEFT JOIN turma t ON m.id_turma = t.id_turma
+                        WHERE s.status = 'autorizado' AND s.motivo LIKE '%STATUS:aguardando_responsavel%'
+                        ORDER BY s.data_solicitada DESC
+                    ")->fetchAll();
+
+                    if (empty($resp)): ?>
+                        <p>Nenhuma solicitação aguardando responsável.</p>
+                    <?php else: ?>
+                        <?php foreach ($resp as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                        ?>
+                            <div class="solicitacao-card">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                                
+                                <div class="action-buttons">
+                                    <p><strong>Decisão do Responsável:</strong></p>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
+                                        <input type="hidden" name="acao" value="autorizar">
+                                        <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer;">Responsável Aceitou</button>
+                                    </form>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
+                                        <input type="hidden" name="acao" value="rejeitar">
+                                        <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Responsável Recusou</button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- AGUARDANDO INSTRUTOR -->
+            <div id="aguardando_instrutor" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Aguardando Instrutor</h3>
+                    <?php
+                    $inst = $conn->query("
+                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                        FROM solicitacao s
+                        JOIN aluno a ON s.id_aluno = a.id_aluno
+                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                        LEFT JOIN turma t ON m.id_turma = t.id_turma
+                        WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
+                        ORDER BY s.data_solicitada DESC
+                    ")->fetchAll();
+
+                    if (empty($inst)): ?>
+                        <p>Nenhuma solicitação aguardando instrutor.</p>
+                    <?php else: ?>
+                        <?php foreach ($inst as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                        ?>
+                            <div class="solicitacao-card">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- AGUARDANDO PORTARIA -->
+            <div id="aguardando_portaria" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Aguardando Portaria</h3>
+                    <?php
+                    $port = $conn->query("
+                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                        FROM solicitacao s
+                        JOIN aluno a ON s.id_aluno = a.id_aluno
+                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                        LEFT JOIN turma t ON m.id_turma = t.id_turma
+                        WHERE s.status = 'liberado' AND s.motivo LIKE '%STATUS:aguardando_portaria%'
+                        ORDER BY s.data_solicitada DESC
+                    ")->fetchAll();
+
+                    if (empty($port)): ?>
+                        <p>Nenhuma solicitação aguardando portaria.</p>
+                    <?php else: ?>
+                        <?php foreach ($port as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                        ?>
+                            <div class="solicitacao-card">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                                <p><strong>Código:</strong> <?php echo $s['codigo_liberacao']; ?></p>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- SOLICITAÇÕES LIBERADAS -->
+            <div id="solicitacoes_liberadas" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Solicitações Liberadas</h3>
+                    <?php
+                    $liberadas = $conn->query("
+                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                               DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                        FROM solicitacao s
+                        JOIN aluno a ON s.id_aluno = a.id_aluno
+                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                        LEFT JOIN turma t ON m.id_turma = t.id_turma
+                        WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                        ORDER BY s.data_solicitada DESC
+                    ")->fetchAll();
+
+                    if (empty($liberadas)): ?>
+                        <p>Nenhuma solicitação liberada.</p>
+                    <?php else: ?>
+                        <?php foreach ($liberadas as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                            $status_texto = getStatusText($s['status'], $s['motivo']);
+                        ?>
+                            <div class="solicitacao-card" style="border-left: 4px solid #28a745;">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                                <?php if (!empty($s['codigo_liberacao'])): ?>
+                                    <p><strong>Código:</strong> <?php echo $s['codigo_liberacao']; ?></p>
+                                <?php endif; ?>
+                                <?php if ($s['status'] == 'concluido' && !empty($s['data_saida_fmt'])): ?>
+                                    <p><strong>Saída Registrada:</strong> <?php echo $s['data_saida_fmt']; ?></p>
+                                <?php endif; ?>
+                                <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- SOLICITAÇÕES RECUSADAS -->
+            <div id="solicitacoes_recusadas" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Solicitações Recusadas</h3>
+                    <?php
+                    $recusadas = $conn->query("
+                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                        FROM solicitacao s
+                        JOIN aluno a ON s.id_aluno = a.id_aluno
+                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                        LEFT JOIN turma t ON m.id_turma = t.id_turma
+                        WHERE s.status = 'rejeitada'
+                        ORDER BY s.data_solicitada DESC
+                    ")->fetchAll();
+
+                    if (empty($recusadas)): ?>
+                        <p>Nenhuma solicitação recusada.</p>
+                    <?php else: ?>
+                        <?php foreach ($recusadas as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                            $status_texto = getStatusText($s['status'], $s['motivo']);
+                        ?>
+                            <div class="solicitacao-card" style="border-left: 4px solid #dc3545;">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+                                <p><strong>Status:</strong> <span style="color: #dc3545; font-weight: bold;"><?php echo $status_texto; ?></span></p>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- VER ALUNOS LIBERADOS POR TURMA -->
+            <div id="alunos_liberados_turma" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Ver Alunos Liberados (por turma)</h3>
+                    <label>Selecione a Turma:</label>
+                    <select id="select_turma_liberados" onchange="mostrarAlunosLiberados(this.value)">
+                        <option value="">Selecione uma turma</option>
+                        <?php foreach ($turmas as $t): ?>
+                            <option value="<?php echo $t['id_turma']; ?>"><?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <script>
+                        function mostrarAlunosLiberados(idTurma) {
+                            document.querySelectorAll('.lista-liberados-turma').forEach(el => el.style.display = 'none');
+                            if (idTurma) {
+                                const lista = document.getElementById('liberados-turma-' + idTurma);
+                                if (lista) lista.style.display = 'block';
+                            }
+                        }
+                    </script>
+
+                    <?php foreach ($turmas as $t): ?>
+                        <div id="liberados-turma-<?php echo $t['id_turma']; ?>" class="lista-liberados-turma" style="display:none; margin-top:20px;">
+                            <h4>Alunos Liberados - Turma: <?php echo htmlspecialchars($t['nome']); ?></h4>
+                            <?php
+                            $stmt_liberados = $conn->prepare("
+                                SELECT s.*, a.nome as aluno_nome, a.matricula,
+                                       f.nome as instrutor_nome,
+                                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                                       DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as hora_instrutor,
+                                       DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as hora_saida
+                                FROM solicitacao s
+                                JOIN aluno a ON s.id_aluno = a.id_aluno
+                                JOIN matricula m ON a.id_aluno = m.id_aluno
+                                LEFT JOIN funcionario f ON s.id_autorizacao = f.id_funcionario
+                                WHERE m.id_turma = ? AND (s.status = 'liberado' OR s.status = 'concluido')
+                                ORDER BY s.data_solicitada DESC
+                            ");
+                            $stmt_liberados->execute([$t['id_turma']]);
+                            $alunos_liberados = $stmt_liberados->fetchAll();
+
+                            if (empty($alunos_liberados)): ?>
+                                <p>Nenhum aluno liberado nesta turma.</p>
+                            <?php else: ?>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Nome do Aluno</th>
+                                            <th>Instrutor</th>
+                                            <th>Motivo</th>
+                                            <th>Hora Instrutor Liberou</th>
+                                            <th>Código</th>
+                                            <th>Hora Saída Portaria</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($alunos_liberados as $al): 
+                                            $parsed = parseMotivo($al['motivo']);
+                                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                                            $status_texto = getStatusText($al['status'], $al['motivo']);
+                                        ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($al['aluno_nome']); ?></td>
+                                                <td><?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?></td>
+                                                <td><?php echo htmlspecialchars($motivo_texto); ?></td>
+                                                <td><?php echo $al['hora_instrutor'] ?? 'N/A'; ?></td>
+                                                <td><?php echo $al['codigo_liberacao'] ?? 'N/A'; ?></td>
+                                                <td><?php echo $al['hora_saida'] ?? 'Aguardando'; ?></td>
+                                                <td><?php echo $status_texto; ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- VER ALUNOS RECUSADOS POR TURMA -->
+            <div id="alunos_recusados_turma" class="section" style="display:none;">
+                <div class="container">
+                    <h3>Ver Alunos Recusados (por turma)</h3>
+                    <label>Selecione a Turma:</label>
+                    <select id="select_turma_recusados" onchange="mostrarAlunosRecusados(this.value)">
+                        <option value="">Selecione uma turma</option>
+                        <?php foreach ($turmas as $t): ?>
+                            <option value="<?php echo $t['id_turma']; ?>"><?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <script>
+                        function mostrarAlunosRecusados(idTurma) {
+                            document.querySelectorAll('.lista-recusados-turma').forEach(el => el.style.display = 'none');
+                            if (idTurma) {
+                                const lista = document.getElementById('recusados-turma-' + idTurma);
+                                if (lista) lista.style.display = 'block';
+                            }
+                        }
+                    </script>
+
+                    <?php foreach ($turmas as $t): ?>
+                        <div id="recusados-turma-<?php echo $t['id_turma']; ?>" class="lista-recusados-turma" style="display:none; margin-top:20px;">
+                            <h4>Alunos Recusados - Turma: <?php echo htmlspecialchars($t['nome']); ?></h4>
+                            <?php
+                            $stmt_recusados = $conn->prepare("
+                                SELECT s.*, a.nome as aluno_nome, a.matricula,
+                                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                                FROM solicitacao s
+                                JOIN aluno a ON s.id_aluno = a.id_aluno
+                                JOIN matricula m ON a.id_aluno = m.id_aluno
+                                WHERE m.id_turma = ? AND s.status = 'rejeitada'
+                                ORDER BY s.data_solicitada DESC
+                            ");
+                            $stmt_recusados->execute([$t['id_turma']]);
+                            $alunos_recusados = $stmt_recusados->fetchAll();
+
+                            if (empty($alunos_recusados)): ?>
+                                <p>Nenhum aluno recusado nesta turma.</p>
+                            <?php else: ?>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Nome</th>
+                                            <th>Motivo</th>
+                                            <th>Quem Recusou</th>
+                                            <th>Hora da Recusa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($alunos_recusados as $ar): 
+                                            $parsed = parseMotivo($ar['motivo']);
+                                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                                            $quem_recusou = 'N/A';
+                                            if (strpos($ar['motivo'], 'recusado_instrutor') !== false) {
+                                                $quem_recusou = 'Instrutor';
+                                            } elseif (strpos($ar['motivo'], 'recusado_pedagogico') !== false) {
+                                                $quem_recusou = 'Pedagógico';
+                                            } elseif (strpos($ar['motivo'], 'recusado_responsavel') !== false) {
+                                                $quem_recusou = 'Responsável';
+                                            }
+                                        ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($ar['aluno_nome']); ?></td>
+                                                <td><?php echo htmlspecialchars($motivo_texto); ?></td>
+                                                <td><?php echo $quem_recusou; ?></td>
+                                                <td><?php echo $ar['data_solicitada_fmt']; ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- GERENCIAR CURSOS -->
             <div id="cursos" class="section" style="display:none;">
                 <div class="container">
                     <h3>Gerenciar Cursos</h3>
@@ -974,6 +1208,7 @@ if ($tipo_user == 'portaria') {
                 </div>
             </div>
 
+            <!-- GERENCIAR UCs -->
             <div id="ucs" class="section" style="display:none;">
                 <div class="container">
                     <h3>Gerenciar Unidades Curriculares</h3>
@@ -985,7 +1220,7 @@ if ($tipo_user == 'portaria') {
                             <?php endforeach; ?>
                         </select>
                         <input type="text" name="nome_uc" placeholder="Nome da UC" required>
-                        <input type="text" name="carga_horaria" placeholder="Carga horária (horas)" required min="1">
+                        <input type="number" name="carga_horaria" placeholder="Carga horária" required min="1">
                         <button type="submit" name="cadastrar_uc">Cadastrar UC</button>
                     </form>
                     <table>
@@ -1028,9 +1263,9 @@ if ($tipo_user == 'portaria') {
                 </div>
             </div>
 
+            <!-- GERENCIAR TURMAS -->
             <div id="turmas" class="section" style="display:none;">
-                <div class="container">
-                    <h3>Gerenciar Turmas</h3>
+                        <h3>Gerenciar Turmas</h3>
                     <form method="POST" style="margin-bottom: 20px;">
                         <select name="id_curso_turma" id="id_curso_turma" required onchange="calcularCargaTotal()">
                             <option value="">Selecione o curso</option>
@@ -1088,7 +1323,6 @@ if ($tipo_user == 'portaria') {
             <div id="alunos" class="section" style="display:none;">
                 <div class="container">
                     <h3>Gerenciar Alunos</h3>
-
                     <h4>Alunos com Cadastro Incompleto</h4>
                     <?php if (empty($alunos_incompletos)): ?>
                         <p>Todos os alunos têm cadastro completo.</p>
@@ -1187,47 +1421,12 @@ if ($tipo_user == 'portaria') {
                     </div>
                 </div>
             </div>
+
         <?php endif; ?>
 
         <!-- INSTRUTOR -->
         <?php if ($tipo_user == 'instrutor'): ?>
-            <div id="dashboard_instrutor" class="section">
-                <div class="container">
-                    <h1 style="text-align: center;">GERAL - INSTRUTOR</h1>
-                    <div class="dashboard-cards">
-                        <div class="card">
-                            <h3>Minhas Turmas</h3>
-                            <p><?php echo count($turmas_instrutor); ?></p>
-                        </div>
-                        <div class="card">
-                            <h3>Total de Alunos</h3>
-                            <p><?php echo $total_alunos; ?></p>
-                        </div>
-                        <div class="card">
-                            <h3>Solicitações Pendentes</h3>
-                            <p><?php echo $solicitacoes_pendentes; ?></p>
-                        </div>
-                    </div>
-
-                    <h2>Minhas Turmas</h2>
-                    <div class="turmas-grid">
-                        <?php if (empty($turmas_instrutor)): ?>
-                            <p>Nenhuma turma encontrada.</p>
-                        <?php else: ?>
-                            <?php foreach ($turmas_instrutor as $turma): ?>
-                                <div class="turma-card">
-                                    <h4><?php echo htmlspecialchars($turma['turma_nome']); ?></h4>
-                                    <p><strong>Curso:</strong> <?php echo htmlspecialchars($turma['curso_nome']); ?></p>
-                                    <p><strong>Alunos Matriculados:</strong> <?php echo $turma['total_alunos']; ?></p>
-                                    <a href="#" onclick="showSection('turmas_instrutor'); showList('turma-<?php echo $turma['id_turma']; ?>'); return false;" class="action-btn">Ver Alunos</a>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-
-            <div id="turmas_instrutor" class="section" style="display:none;">
+            <div id="turmas_instrutor" class="section">
                 <div class="container">
                     <h3>Minhas Turmas - Detalhes</h3>
                     <select onchange="showList('turma-' + this.value)">
@@ -1269,32 +1468,74 @@ if ($tipo_user == 'portaria') {
             <div id="solicitacoes_instrutor" class="section" style="display:none;">
                 <div class="container">
                     <h3>Solicitações para Liberação</h3>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label for="filtro_turma_solicitacao">Filtrar por Turma:</label>
+                        <select id="filtro_turma_solicitacao" onchange="filtrarSolicitacoesPorTurma()">
+                            <option value="">Todas as Turmas</option>
+                            <?php foreach ($turmas_instrutor as $turma): ?>
+                                <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <script>
+                        function filtrarSolicitacoesPorTurma() {
+                            const turmaId = document.getElementById('filtro_turma_solicitacao').value;
+                            const cards = document.querySelectorAll('.solicitacao-card-instrutor');
+                            
+                            cards.forEach(card => {
+                                if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
+                                    card.style.display = 'block';
+                                } else {
+                                    card.style.display = 'none';
+                                }
+                            });
+                        }
+                    </script>
+
                     <?php
                     $solicitacoes_instrutor = $conn->query("
                         SELECT s.*, a.nome as aluno_nome, a.matricula, uc.nome as uc_nome, 
-                               DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as data_autorizada_fmt
+                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                               t.id_turma, t.nome as turma_nome
                         FROM solicitacao s 
                         JOIN aluno a ON s.id_aluno = a.id_aluno 
+                        JOIN matricula m ON a.id_aluno = m.id_aluno
+                        JOIN turma t ON m.id_turma = t.id_turma
                         LEFT JOIN unidade_curricular uc ON s.id_curricular = uc.id_curricular 
-                        WHERE s.status = 'autorizado' 
-                        ORDER BY s.data_autorizada DESC
+                        WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
+                        ORDER BY s.data_solicitada DESC
                     ")->fetchAll();
 
                     if (empty($solicitacoes_instrutor)): ?>
-                        <p>Nenhuma solicitação autorizada pendente.</p>
+                        <p>Nenhuma solicitação pendente.</p>
                     <?php else: ?>
-                        <?php foreach ($solicitacoes_instrutor as $s): ?>
-                            <div class="solicitacao-card">
+                        <?php 
+                        $motivos_map = [
+                            '1' => 'Consulta médica',
+                            '2' => 'Consulta odontológica',
+                            '3' => 'Exames médicos',
+                            '4' => 'Problemas de saúde',
+                            '5' => 'Solicitação da empresa',
+                            '6' => 'Solicitação da família',
+                            '7' => 'Viagem particular',
+                            '8' => 'Viagem a trabalho',
+                            '9' => 'Treinamento a trabalho'
+                        ];
+                        foreach ($solicitacoes_instrutor as $s): 
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_raw = $parsed['motivo'];
+                            $motivo_texto = (is_numeric($motivo_raw) && isset($motivos_map[$motivo_raw])) ? $motivos_map[$motivo_raw] : $motivo_raw;
+                        ?>
+                            <div class="solicitacao-card solicitacao-card-instrutor" data-turma-id="<?php echo $s['id_turma']; ?>">
                                 <div class="solicitacao-header">
                                     <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
-                                    <span class="status-badge" style="background-color: <?php echo getStatusColor($s['status']); ?>;">
-                                        <?php echo getStatusText($s['status']); ?>
-                                    </span>
                                 </div>
+                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome']); ?></p>
                                 <p><strong>UC:</strong> <?php echo htmlspecialchars($s['uc_nome']); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($s['motivo']); ?></p>
-                                <p><strong>Data Autorização:</strong> <?php echo $s['data_autorizada_fmt']; ?></p>
-                                <p><strong>Código de Liberação:</strong> <span style="font-size:1.2em; color:#007bff; font-weight:bold;"><?php echo $s['codigo_liberacao']; ?></span></p>
+                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
 
                                 <div class="action-buttons" style="margin-top:15px;">
                                     <form method="POST" style="display:inline;">

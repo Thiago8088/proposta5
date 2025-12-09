@@ -59,7 +59,15 @@ CREATE TABLE solicitacao (
     data_solicitada DATETIME NOT NULL,
     data_autorizada DATETIME NULL,
     data_saida DATETIME NULL,
-    status ENUM('solicitado','autorizado','liberado') NOT NULL,
+    status ENUM(
+        'solicitado',
+        'autorizado',
+        'liberado',
+        'aguardando_responsavel',
+        'liberado_portaria',
+        'concluido',
+        'rejeitada'
+    ) NOT NULL DEFAULT 'autorizado',
     FOREIGN KEY (id_aluno) REFERENCES aluno(id_aluno),
     FOREIGN KEY (id_curricular) REFERENCES unidade_curricular(id_curricular),
     FOREIGN KEY (id_autorizacao) REFERENCES funcionario(id_funcionario) 
