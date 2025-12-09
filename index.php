@@ -246,8 +246,8 @@ if ($tipo_user == 'pedagógico') {
                 // Responsible Accepted -> Generate Code -> aguardando_portaria
                 $codigo = gerarCodigoLiberacao();
                 $new_motivo = buildMotivo('aguardando_portaria', $original_motivo, $codigo);
-                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'liberado', motivo = ?, codigo_liberacao = ? WHERE id_solicitacao = ?");
-                $stmt->execute([$new_motivo, $codigo, $id_solicitacao]);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'liberado', motivo = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $id_solicitacao]);
 
                 // Send WhatsApp with code
                 $stmt_aluno = $conn->prepare("SELECT a.* FROM aluno a JOIN solicitacao s ON a.id_aluno = s.id_aluno WHERE s.id_solicitacao = ?");
@@ -428,6 +428,7 @@ if ($tipo_user == 'pedagógico') {
         $contato_responsavel = LimpaPost($_POST['contato_responsavel']);
         $nome_responsavel = isset($_POST['nome_responsavel']) ? LimpaPost($_POST['nome_responsavel']) : '';
         $empresa = isset($_POST['empresa']) ? LimpaPost($_POST['empresa']) : '';
+        $contato_empresa = isset($_POST['contato_empresa']) ? LimpaPost($_POST['contato_empresa']) : '';
         $id_turma = $_POST['id_turma'];
 
         try {
@@ -447,6 +448,11 @@ if ($tipo_user == 'pedagógico') {
             if (in_array('empresa', $columns) && !empty($empresa)) {
                 $updates[] = "empresa = ?";
                 $params[] = $empresa;
+            }
+
+            if (in_array('contato_empresa', $columns) && !empty($contato_empresa)) {
+                $updates[] = "contato_empresa = ?";
+                $params[] = $contato_empresa;
             }
 
             $params[] = $id_aluno;
@@ -567,8 +573,8 @@ if ($tipo_user == 'portaria') {
         $codigo = strtoupper(LimpaPost($_POST['codigo_liberacao']));
 
         try {
-            $stmt = $conn->prepare("SELECT s.*, a.nome, a.matricula FROM solicitacao s JOIN aluno a ON s.id_aluno = a.id_aluno WHERE s.codigo_liberacao = ? AND s.status = 'liberado'");
-            $stmt->execute([$codigo]);
+            $stmt = $conn->prepare("SELECT s.*, a.nome, a.matricula FROM solicitacao s JOIN aluno a ON s.id_aluno = a.id_aluno WHERE s.status = 'liberado' AND s.motivo LIKE ?");
+            $stmt->execute(['%CODIGO:' . $codigo . '%']);
             $solicitacao = $stmt->fetch();
 
             if ($solicitacao) {
@@ -848,15 +854,18 @@ if ($tipo_user == 'portaria') {
                     <h3>Todas as Solicitações Pendentes</h3>
                     <?php
                     $todas_solicitacoes = $conn->query("
-                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
-                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
-                        FROM solicitacao s
-                        JOIN aluno a ON s.id_aluno = a.id_aluno
-                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                        LEFT JOIN turma t ON m.id_turma = t.id_turma
-                        WHERE s.status IN ('solicitado', 'autorizado', 'liberado')
-                        ORDER BY s.data_solicitada DESC
-                    ")->fetchAll();
+                    SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                           DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                    FROM solicitacao s
+                    JOIN aluno a ON s.id_aluno = a.id_aluno
+                    LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                    LEFT JOIN turma t ON m.id_turma = t.id_turma
+                    WHERE (
+                        (s.status = 'solicitado' AND s.motivo LIKE '%aguardando_pedagogico%')
+                        OR (s.status = 'autorizado' AND s.motivo LIKE '%aguardando_pedagogico%')
+                    )
+                    ORDER BY s.data_solicitada DESC
+                ")->fetchAll();
 
                     if (empty($todas_solicitacoes)): ?>
                         <p>Nenhuma solicitação pendente no momento.</p>
@@ -943,8 +952,13 @@ if ($tipo_user == 'portaria') {
                 <div class="container">
                     <h3>Aguardando Portaria</h3>
                     <?php
+                    $columns = $conn->query("SHOW COLUMNS FROM aluno")->fetchAll(PDO::FETCH_COLUMN);
                     $port = $conn->query("
                         SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                               a.contato_responsavel,
+                               " . (in_array('nome_responsavel', $columns) ? "a.nome_responsavel," : "") . "
+                               " . (in_array('empresa', $columns) ? "a.empresa," : "") . "
+                               " . (in_array('contato_empresa', $columns) ? "a.contato_empresa," : "") . "
                                DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
                         FROM solicitacao s
                         JOIN aluno a ON s.id_aluno = a.id_aluno
@@ -966,7 +980,25 @@ if ($tipo_user == 'portaria') {
                                 <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
                                 <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
                                 <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
-                                <p><strong>Código:</strong> <?php echo $s['codigo_liberacao']; ?></p>
+                                <p><strong>Código:</strong> <?php echo htmlspecialchars($parsed['codigo'] ?? 'N/A'); ?></p>
+
+                                <?php if (!empty($s['nome_responsavel']) || !empty($s['contato_responsavel'])): ?>
+                                    <p><strong>Responsável:</strong>
+                                        <?php echo htmlspecialchars($s['nome_responsavel'] ?? 'N/A'); ?>
+                                        <?php if (!empty($s['contato_responsavel'])): ?>
+                                            - <?php echo htmlspecialchars($s['contato_responsavel']); ?>
+                                        <?php endif; ?>
+                                    </p>
+                                <?php endif; ?>
+
+                                <?php if (!empty($s['empresa']) || !empty($s['contato_empresa'])): ?>
+                                    <p><strong>Empresa:</strong>
+                                        <?php echo htmlspecialchars($s['empresa'] ?? 'N/A'); ?>
+                                        <?php if (!empty($s['contato_empresa'])): ?>
+                                            - <?php echo htmlspecialchars($s['contato_empresa']); ?>
+                                        <?php endif; ?>
+                                    </p>
+                                <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -979,16 +1011,20 @@ if ($tipo_user == 'portaria') {
                     <h3>Solicitações Liberadas</h3>
                     <?php
                     $liberadas = $conn->query("
-                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
-                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                               DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
-                        FROM solicitacao s
-                        JOIN aluno a ON s.id_aluno = a.id_aluno
-                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                        LEFT JOIN turma t ON m.id_turma = t.id_turma
-                        WHERE (s.status = 'liberado' OR s.status = 'concluido')
-                        ORDER BY s.data_solicitada DESC
-                    ")->fetchAll();
+                    SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                           a.contato_responsavel,
+                           " . (in_array('nome_responsavel', $columns) ? "a.nome_responsavel," : "") . "
+                           " . (in_array('empresa', $columns) ? "a.empresa," : "") . "
+                           " . (in_array('contato_empresa', $columns) ? "a.contato_empresa," : "") . "
+                           DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                           DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                    FROM solicitacao s
+                    JOIN aluno a ON s.id_aluno = a.id_aluno
+                    LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                    LEFT JOIN turma t ON m.id_turma = t.id_turma
+                    WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                    ORDER BY s.data_solicitada DESC
+                ")->fetchAll();
 
                     if (empty($liberadas)): ?>
                         <p>Nenhuma solicitação liberada.</p>
@@ -1003,9 +1039,32 @@ if ($tipo_user == 'portaria') {
                                 <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
                                 <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
                                 <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
-                                <?php if (!empty($s['codigo_liberacao'])): ?>
-                                    <p><strong>Código:</strong> <?php echo $s['codigo_liberacao']; ?></p>
+
+                                <?php
+                                $parsed_lib = parseMotivo($s['motivo']);
+                                if (!empty($parsed_lib['codigo'])):
+                                ?>
+                                    <p><strong>Código:</strong> <?php echo htmlspecialchars($parsed_lib['codigo']); ?></p>
                                 <?php endif; ?>
+
+                                <?php if (!empty($s['nome_responsavel']) || !empty($s['contato_responsavel'])): ?>
+                                    <p><strong>Responsável:</strong>
+                                        <?php echo htmlspecialchars($s['nome_responsavel'] ?? 'N/A'); ?>
+                                        <?php if (!empty($s['contato_responsavel'])): ?>
+                                            - <?php echo htmlspecialchars($s['contato_responsavel']); ?>
+                                        <?php endif; ?>
+                                    </p>
+                                <?php endif; ?>
+
+                                <?php if (!empty($s['empresa']) || !empty($s['contato_empresa'])): ?>
+                                    <p><strong>Empresa:</strong>
+                                        <?php echo htmlspecialchars($s['empresa'] ?? 'N/A'); ?>
+                                        <?php if (!empty($s['contato_empresa'])): ?>
+                                            - <?php echo htmlspecialchars($s['contato_empresa']); ?>
+                                        <?php endif; ?>
+                                    </p>
+                                <?php endif; ?>
+
                                 <?php if ($s['status'] == 'concluido' && !empty($s['data_saida_fmt'])): ?>
                                     <p><strong>Saída Registrada:</strong> <?php echo $s['data_saida_fmt']; ?></p>
                                 <?php endif; ?>
@@ -1120,7 +1179,7 @@ if ($tipo_user == 'portaria') {
                                                 <td><?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?></td>
                                                 <td><?php echo htmlspecialchars($motivo_texto); ?></td>
                                                 <td><?php echo $al['hora_instrutor'] ?? 'N/A'; ?></td>
-                                                <td><?php echo $al['codigo_liberacao'] ?? 'N/A'; ?></td>
+                                                <td><?php echo htmlspecialchars($parsed['codigo'] ?? 'N/A'); ?></td>
                                                 <td><?php echo $al['hora_saida'] ?? 'Aguardando'; ?></td>
                                                 <td><?php echo $status_texto; ?></td>
                                             </tr>
@@ -1398,20 +1457,20 @@ if ($tipo_user == 'portaria') {
                             <form method="POST" style="margin-top:15px;">
                                 <input type="hidden" name="id_aluno" value="<?php echo $aluno['id_aluno']; ?>">
                                 <label>Nome do Responsável:</label>
-                                <input type="text" name="nome_responsavel" value="<?php echo htmlspecialchars($user['nome_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Nome do Responsável" <?php echo !empty($aluno['nome_responsavel']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
+                                <input type="text" name="nome_responsavel" value="<?php echo htmlspecialchars($aluno['nome_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="Digite Nome do Responsável" <?php echo !empty($aluno['nome_responsavel']) ? 'readonly style="background:#f0f0f0;"' : ''; ?>>
 
                                 <label>Telefone do Responsável:</label>
-                                <input type="text" name="contato_responsavel" value="<?php echo htmlspecialchars($user['contato_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                <input type="text" name="contato_responsavel" value="<?php echo htmlspecialchars($aluno['contato_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                                     placeholder="Digite Telefone do Responsável" <?php echo !empty($aluno['contato_responsavel']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
 
                                 <label>Nome da Empresa:</label>
-                                <input type="text" name="nome_empresa" value="<?php echo htmlspecialchars($user['nome_empresa'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Nome da Empresa" <?php echo !empty($aluno['nome_empresa']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
+                                <input type="text" name="empresa" value="<?php echo htmlspecialchars($aluno['empresa'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="Digite Nome da Empresa" <?php echo !empty($aluno['empresa']) ? 'readonly style="background:#f0f0f0;"' : ''; ?>>
 
                                 <label>Telefone da Empresa:</label>
-                                <input type="text" name="contato_empresa" value="<?php echo htmlspecialchars($user['contato_empresa'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Telefone da Empresa" <?php echo !empty($aluno['contato_empresa']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
+                                <input type="text" name="contato_empresa" value="<?php echo htmlspecialchars($aluno['contato_empresa'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="Digite Telefone da Empresa" <?php echo !empty($aluno['contato_empresa']) ? 'readonly style="background:#f0f0f0;"' : ''; ?>>
 
                                 <label>Turma:</label>
                                 <select name="id_turma" <?php echo !empty($aluno['turma_nome']) ? 'disabled style="background:#f0f0f0;"' : 'required'; ?>>
@@ -1477,7 +1536,6 @@ if ($tipo_user == 'portaria') {
             </div>
         </div>
     </div>
-
 <?php endif; ?>
 
 <!-- INSTRUTOR -->
