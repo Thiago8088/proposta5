@@ -13,7 +13,7 @@ function LimpaPost($valor)
 function conectarBanco()
 {
     $servidor = "localhost";
-    $banco = "db_5";
+    $banco = "SENAI_LIBERAJA";
     $usuario = "root";
     $senha = "";
 
