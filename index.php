@@ -1,5 +1,6 @@
 <?php
 session_start();
+date_default_timezone_set('America/Sao_Paulo');
 require("db/conexao.php");
 
 if (!isset($_SESSION['id'])) {
@@ -116,13 +117,6 @@ $msg_type = "";
 if ($tipo_user == 'aluno') {
     if (isset($_POST['solicitar_saida'])) {
         $id_curricular = LimpaPost($_POST['id_curricular']);
-        $turno = LimpaPost($_POST['turno']);
-        $modalidade = LimpaPost($_POST['modalidade']);
-        $data_solicitacao = date('Y-m-d');
-        $hora_solicitacao = date('H:i:s');
-        if (empty($data_solicitacao) || empty($hora_solicitacao)) {
-            $msg = "Erro interno: não foi possível gerar data/hora da solicitação.";
-        }
         $motivo = $_POST['motivo'];
         $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
 
@@ -136,52 +130,8 @@ if ($tipo_user == 'aluno') {
             $motivo_final = $motivo == '10' ? $motivo_outro : $motivo;
 
             try {
-                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitacao, hora_solicitacao, turno, modalidade, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'solicitado')");
-                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_final, $data_solicitacao, $hora_solicitacao, $turno, $modalidade]);
-                $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
-                $msg_type = "success";
-
-                if (!empty($user['contato_responsavel'])) {
-                    enviarWhatsApp($user['contato_responsavel'], "Seu filho(a) " . $user['nome'] . " solicitou saída da escola. Motivo: " . $motivo_final);
-                }
-            } catch (PDOException $e) {
-                $msg = "Erro ao enviar solicitação: " . $e->getMessage();
-                $msg_type = "error";
-            }
-        }
-    }
-
-    $ucs = $conn->query("SELECT uc.* FROM unidade_curricular uc JOIN turma t ON uc.id_curso = t.id_curso JOIN matricula m ON t.id_turma = m.id_turma WHERE m.id_aluno = " . $user['id_aluno'])->fetchAll();
-}
-
-$msg_type = "";
-
-
-// LÓGICA ALUNO
-
-
-if ($tipo_user == 'aluno') {
-    if (isset($_POST['solicitar_saida'])) {
-        $id_curricular = LimpaPost($_POST['id_curricular']);
-        $turno = LimpaPost($_POST['turno']);
-        $modalidade = LimpaPost($_POST['modalidade']);
-        $data_solicitacao = $_POST['data_solicitacao'];
-        $hora_solicitacao = $_POST['hora_solicitacao'];
-        $motivo = $_POST['motivo'];
-        $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
-
-        if (empty($motivo)) {
-            $msg = "Selecione o motivo da solicitação!";
-            $msg_type = "error";
-        } elseif ($motivo == '10' && empty($motivo_outro)) {
-            $msg = "Descreva o motivo da saída!";
-            $msg_type = "error";
-        } else {
-            $motivo_final = $motivo == '10' ? $motivo_outro : $motivo;
-
-            try {
-                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitacao, hora_solicitacao, turno, modalidade, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'solicitado')");
-                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_final, $data_solicitacao, $hora_solicitacao, $turno, $modalidade]);
+                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitada, status) VALUES (?, ?, ?, NOW(), 'autorizado')");
+                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_final]);
                 $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
                 $msg_type = "success";
 
@@ -207,20 +157,10 @@ if ($tipo_user == 'pedagógico') {
         $acao = $_POST['acao'];
 
         if ($acao == 'autorizar') {
-            $codigo = gerarCodigoLiberacao();
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', data_autorizada = NOW(), id_autorizacao = ?, codigo_liberacao = ? WHERE id_solicitacao = ?");
-            $stmt->execute([$user['id_funcionario'], $codigo, $id_solicitacao]);
+            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'concluido', data_autorizada = NOW(), id_autorizacao = ? WHERE id_solicitacao = ?");
+            $stmt->execute([$user['id_funcionario'], $id_solicitacao]);
 
-            $stmt_aluno = $conn->prepare("SELECT a.*, s.motivo FROM aluno a JOIN solicitacao s ON a.id_aluno = s.id_aluno WHERE s.id_solicitacao = ?");
-            $stmt_aluno->execute([$id_solicitacao]);
-            $dados_aluno = $stmt_aluno->fetch();
-
-            $instrutores = $conn->query("SELECT celular FROM funcionario WHERE tipo = 'instrutor'")->fetchAll();
-            foreach ($instrutores as $instrutor) {
-                enviarWhatsApp($instrutor['celular'], "Aluno " . $dados_aluno['nome'] . " foi autorizado para saída. Código: " . $codigo);
-            }
-
-            $msg = "Saída autorizada! Código gerado: " . $codigo;
+            $msg = "Saída autorizada com sucesso!";
             $msg_type = "success";
         } else {
             $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada' WHERE id_solicitacao = ?");
@@ -262,10 +202,19 @@ if ($tipo_user == 'pedagógico') {
     if (isset($_POST['deletar_curso'])) {
         $id_curso = $_POST['id_curso'];
         try {
-            $stmt = $conn->prepare("DELETE FROM curso WHERE id_curso = ?");
-            $stmt->execute([$id_curso]);
-            $msg = "Curso excluído!";
-            $msg_type = "success";
+            $check = $conn->prepare("SELECT COUNT(*) as total FROM turma WHERE id_curso = ?");
+            $check->execute([$id_curso]);
+            $total_turmas = $check->fetch()['total'];
+            
+            if ($total_turmas > 0) {
+                $msg = "Não é possível excluir este curso pois existem " . $total_turmas . " turma(s) associada(s). Exclua as turmas primeiro.";
+                $msg_type = "error";
+            } else {
+                $stmt = $conn->prepare("DELETE FROM curso WHERE id_curso = ?");
+                $stmt->execute([$id_curso]);
+                $msg = "Curso excluído com sucesso!";
+                $msg_type = "success";
+            }
         } catch (PDOException $e) {
             $msg = "Erro: " . $e->getMessage();
             $msg_type = "error";
@@ -354,10 +303,20 @@ if ($tipo_user == 'pedagógico') {
     if (isset($_POST['deletar_turma'])) {
         try {
             $id_turma = $_POST['id_turma'];
-            $stmt = $conn->prepare("DELETE FROM turma WHERE id_turma = ?");
-            $stmt->execute([$id_turma]);
-            $msg = "Turma excluída!";
-            $msg_type = "success";
+            
+            $check = $conn->prepare("SELECT COUNT(*) as total FROM matricula WHERE id_turma = ?");
+            $check->execute([$id_turma]);
+            $total_matriculas = $check->fetch()['total'];
+            
+            if ($total_matriculas > 0) {
+                $msg = "Não é possível excluir esta turma pois existem " . $total_matriculas . " aluno(s) matriculado(s). Remova as matrículas primeiro.";
+                $msg_type = "error";
+            } else {
+                $stmt = $conn->prepare("DELETE FROM turma WHERE id_turma = ?");
+                $stmt->execute([$id_turma]);
+                $msg = "Turma excluída com sucesso!";
+                $msg_type = "success";
+            }
         } catch (PDOException $e) {
             $msg = "Erro: " . $e->getMessage();
             $msg_type = "error";
@@ -454,16 +413,19 @@ if ($tipo_user == 'instrutor') {
         $acao = $_POST['acao_instrutor'];
 
         if ($acao == 'autorizar') {
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'liberado', data_liberacao_instrutor = NOW() WHERE id_solicitacao = ?");
-            $stmt->execute([$id_solicitacao]);
+            $codigo = gerarCodigoLiberacao();
+            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'liberado', data_liberacao_instrutor = NOW(), codigo_liberacao = ? WHERE id_solicitacao = ?");
+            $stmt->execute([$codigo, $id_solicitacao]);
 
-            $stmt_aluno = $conn->prepare("SELECT a.*, s.motivo, s.codigo_liberacao FROM aluno a JOIN solicitacao s ON a.id_aluno = s.id_aluno WHERE s.id_solicitacao = ?");
+            $stmt_aluno = $conn->prepare("SELECT a.*, s.motivo FROM aluno a JOIN solicitacao s ON a.id_aluno = s.id_aluno WHERE s.id_solicitacao = ?");
             $stmt_aluno->execute([$id_solicitacao]);
             $dados_aluno = $stmt_aluno->fetch();
 
-            enviarWhatsApp($dados_aluno['celular'], "Sua saída foi autorizada! Código de liberação: " . $dados_aluno['codigo_liberacao']);
+            if (!empty($dados_aluno['celular'])) {
+                enviarWhatsApp($dados_aluno['celular'], "Sua saída foi autorizada pelo instrutor! Aguarde aprovação da pedagógica.");
+            }
 
-            $msg = "Saída liberada! Código enviado ao aluno.";
+            $msg = "Saída liberada! Aguardando aprovação da pedagógica.";
             $msg_type = "success";
         } else {
             $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada' WHERE id_solicitacao = ?");
@@ -550,10 +512,17 @@ if ($tipo_user == 'portaria') {
         }
 
         function carregarMatriculas(idTurma) {
-            if (idTurma == '') return;
-            fetch('ajax_matriculas.php?id_turma=' + idTurma)
-                .then(response => response.text())
-                .then(data => document.getElementById('matriculas_turma').innerHTML = data);
+            if (idTurma == '') {
+                document.getElementById('matriculas_turma').innerHTML = '';
+                return;
+            }
+            
+            document.querySelectorAll('.lista-alunos-turma').forEach(el => el.style.display = 'none');
+            
+            const lista = document.getElementById('alunos-turma-' + idTurma);
+            if (lista) {
+                lista.style.display = 'block';
+            }
         }
 
         function toggleOutro() {
@@ -613,8 +582,8 @@ if ($tipo_user == 'portaria') {
         <?php if ($tipo_user != 'portaria'): ?>
             <div class="navbar-menu">
                 <?php if ($tipo_user == 'aluno'): ?>
-                    <a href="#" onclick="showSection('info'); return false;">Informações</a>
                     <a href="#" onclick="showSection('solicitacao'); return false;">Nova Solicitação</a>
+                    <a href="#" onclick="showSection('info'); return false;">Informações</a>
                     <a href="#" onclick="showSection('frequencia'); return false;">Minha Frequência</a>
                 <?php elseif ($tipo_user == 'pedagógico'): ?>
                     <a href="#" onclick="showSection('dashboard'); return false;">Geral</a>
@@ -1182,7 +1151,40 @@ if ($tipo_user == 'portaria') {
                             <option value="<?php echo $t['id_turma']; ?>"><?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <div id="matriculas_turma"></div>
+                    <div id="matriculas_turma">
+                        <?php foreach ($turmas as $t): ?>
+                            <div id="alunos-turma-<?php echo $t['id_turma']; ?>" class="lista-alunos-turma" style="display:none;">
+                                <h5>Alunos da Turma: <?php echo htmlspecialchars($t['nome']); ?></h5>
+                                <?php
+                                $stmt_alunos = $conn->prepare("SELECT a.nome, a.matricula, a.celular FROM aluno a JOIN matricula m ON a.id_aluno = m.id_aluno WHERE m.id_turma = ? ORDER BY a.nome");
+                                $stmt_alunos->execute([$t['id_turma']]);
+                                $alunos_turma = $stmt_alunos->fetchAll();
+                                
+                                if (empty($alunos_turma)): ?>
+                                    <p>Nenhum aluno matriculado nesta turma.</p>
+                                <?php else: ?>
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Nome</th>
+                                                <th>Matrícula</th>
+                                                <th>Celular</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($alunos_turma as $aluno): ?>
+                                                <tr>
+                                                    <td><?php echo htmlspecialchars($aluno['nome']); ?></td>
+                                                    <td><?php echo htmlspecialchars($aluno['matricula']); ?></td>
+                                                    <td><?php echo htmlspecialchars($aluno['celular']); ?></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
         <?php endif; ?>
