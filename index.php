@@ -1,5 +1,4 @@
 <?php
-session_start();
 date_default_timezone_set('America/Sao_Paulo');
 require("db/conexao.php");
 
@@ -770,8 +769,8 @@ if ($tipo_user == 'portaria') {
                     <a href="#" onclick="showSection('alunos'); return false;">Gerenciar Alunos</a>
                     <a href="#" onclick="showSection('cadastro_aluno'); return false;">Cadastrar Alunos</a>
                     <a href="#" onclick="showSection('cadastro_funcionario'); return false;">Cadastrar Funcionario</a>
-                    
-                    
+
+
                 <?php elseif ($tipo_user == 'instrutor'): ?>
                     <a href="#" onclick="showSection('turmas_instrutor'); return false;">Minhas Turmas</a>
                     <a href="#" onclick="showSection('solicitacoes_instrutor'); return false;">Solicitações</a>
@@ -793,321 +792,321 @@ if ($tipo_user == 'portaria') {
         <?php endif; ?>
 
         <!-- CADASTRO ALUNO -->
-            <div id="cadastro_aluno" class="section" style="display: <?= $tela_atual == 'cadastro_aluno' ? 'block' : 'none' ?>;">
-                <?php if (!empty($msg_cad_aluno)) : ?>
-                    <div class="msg <?= $msg_type ?>"><?= $msg_cad_aluno ?></div>
-                <?php endif; ?>
+        <div id="cadastro_aluno" class="section" style="display: <?= $tela_atual == 'cadastro_aluno' ? 'block' : 'none' ?>;">
+            <?php if (!empty($msg_cad_aluno)) : ?>
+                <div class="msg <?= $msg_type ?>"><?= $msg_cad_aluno ?></div>
+            <?php endif; ?>
 
-                <form method="POST">
-    
-                    <input type="text" name="nome" placeholder="Nome Completo" value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
+            <form method="POST">
 
-                    <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)" maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
+                <input type="text" name="nome" placeholder="Nome Completo" value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
 
-                    <input type="text" name="matricula" placeholder="Matrícula" value="<?= isset($dados_formulario['matricula']) ? htmlspecialchars($dados_formulario['matricula']) : '' ?>" required>
+                <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)" maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
 
-                    <input type="text" name="turma" placeholder="Turma" value="<?= isset($dados_formulario['turma']) ? htmlspecialchars($dados_formulario['turma']) : '' ?>" required>
+                <input type="text" name="matricula" placeholder="Matrícula" value="<?= isset($dados_formulario['matricula']) ? htmlspecialchars($dados_formulario['matricula']) : '' ?>" required>
 
-                    <label style="font-size:0.9em; color:#666;">Data de Nascimento:</label>
-                    <input type="date" name="data_nascimento" value="<?= isset($dados_formulario['data_nascimento']) ? htmlspecialchars($dados_formulario['data_nascimento']) : '' ?>" required>
+                <input type="text" name="turma" placeholder="Turma" value="<?= isset($dados_formulario['turma']) ? htmlspecialchars($dados_formulario['turma']) : '' ?>" required>
 
-                    <input type="password" name="senha" placeholder="Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-aluno')" required>
-                    <div id="requisitos-senha-aluno"></div>
+                <label style="font-size:0.9em; color:#666;">Data de Nascimento:</label>
+                <input type="date" name="data_nascimento" value="<?= isset($dados_formulario['data_nascimento']) ? htmlspecialchars($dados_formulario['data_nascimento']) : '' ?>" required>
 
-                    <button type="submit" name="cadastrar_aluno">Cadastrar</button>
-                </form>
-            </div>
+                <input type="password" name="senha" placeholder="Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-aluno')" required>
+                <div id="requisitos-senha-aluno"></div>
 
-            <!--CADASTRO ALUNO --> 
-            <?php 
-if (isset($_POST['cadastrar_aluno'])) {
-    $tela_atual = "cadastro_aluno";
+                <button type="submit" name="cadastrar_aluno">Cadastrar</button>
+            </form>
+        </div>
 
-    $dados_formulario = [
-        'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
-        'matricula' => isset($_POST['matricula']) ? LimpaPost($_POST['matricula']) : '',
-        'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
-        'senha' => isset($_POST['senha']) ? $_POST['senha'] : '',
-        'data_nascimento' => isset($_POST['data_nascimento']) ? $_POST['data_nascimento'] : '',
-        'turma' => isset($_POST['turma']) ? LimpaPost($_POST['turma']) : ''
-    ];
+        <!--CADASTRO ALUNO -->
+        <?php
+        if (isset($_POST['cadastrar_aluno'])) {
+            $tela_atual = "cadastro_aluno";
 
-    $erros = [];
-
-    if (empty($dados_formulario['nome'])) {
-        $erros[] = "O campo Nome é obrigatório";
-    }
-
-    if (empty($dados_formulario['matricula'])) {
-        $erros[] = "O campo Matrícula é obrigatório";
-    }
-
-    if (empty($dados_formulario['cpf'])) {
-        $erros[] = "O campo CPF é obrigatório";
-    }
-
-    if (empty($dados_formulario['senha'])) {
-        $erros[] = "O campo Senha é obrigatório";
-    }
-
-    if (empty($dados_formulario['data_nascimento'])) {
-        $erros[] = "O campo Data de Nascimento é obrigatório";
-    }
-
-    if (empty($dados_formulario['turma'])) {
-        $erros[] = "O campo Turma é obrigatório";
-    }
-
-    if (!empty($dados_formulario['cpf'])) {
-        $cpf_limpo = limparCPF($dados_formulario['cpf']);
-
-        if (!validarCPF($cpf_limpo)) {
-            $erros[] = "CPF inválido! Verifique os números digitados";
-        } else {
-            if (cpfJaExiste($cpf_limpo)) {
-                $erros[] = "Este CPF já está cadastrado no sistema";
-            }
-        }
-    }
-
-    if (!empty($dados_formulario['senha'])) {
-        $errosSenha = validarSenhaForte($dados_formulario['senha']);
-        if (!empty($errosSenha)) {
-            $erros = array_merge($erros, $errosSenha);
-        }
-    }
-
-    if (!empty($dados_formulario['matricula'])) {
-        if (matriculaJaExiste($dados_formulario['matricula'], null, 'aluno')) {
-            $erros[] = "Esta matrícula já está cadastrada no sistema";
-        }
-    }
-
-    if (!empty($dados_formulario['data_nascimento'])) {
-        if (!validarData($dados_formulario['data_nascimento'])) {
-            $erros[] = "Data de nascimento inválida";
-        } else {
-            $idade = calcularIdade($dados_formulario['data_nascimento']);
-            if ($idade < 14) {
-                $erros[] = "É necessário ter pelo menos 14 anos para se cadastrar";
-            }
-        }
-    }
-
-    if (empty($erros)) {
-        $celular = '00000000000';
-        $cpf_formatado = formatarCPF($cpf_limpo);
-        $senha_hash = hashSenha($dados_formulario['senha']);
-
-        try {
-            $stmt = $conn->prepare("INSERT INTO aluno (nome, matricula, cpf, celular, senha_hash, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([
-                $dados_formulario['nome'],
-                $dados_formulario['matricula'],
-                $cpf_formatado,
-                $celular,
-                $senha_hash,
-                $dados_formulario['data_nascimento']
-            ]);
-
-            $msg_login = "Aluno cadastrado com sucesso! Faça login para acessar o sistema.";
-            $msg_type = "success";
-            $tela_atual = "login";
-            $dados_formulario = [];
-        } catch (PDOException $e) {
-            $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
-            error_log("Erro ao cadastrar aluno: " . $e->getMessage());
-        }
-    }
-
-    if (!empty($erros)) {
-        $msg_cad_aluno = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
-        $msg_type = "error";
-    }
-}
-
-?>
-  <!-- CADASTRO FUNCIONÁRIO -->
-            <div id="cadastro_funcionario" class="section" style="display: <?= $tela_atual == 'cadastro_funcionario' ? 'block' : 'none' ?>;">
-                <?php if (!empty($msg_cad_func)) : ?>
-                    <div class="msg <?= $msg_type ?>"><?= $msg_cad_func ?></div>
-                <?php endif; ?>
-
-                <form method="POST">
-                    <input type="text" name="nome" placeholder="Nome Completo" value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
-
-                    <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)" maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
-
-                    <select name="tipo" required>
-                        <option value="">Selecione o Tipo</option>
-                        <option value="pedagógico" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'pedagógico') ? 'selected' : '' ?>>Pedagógico</option>
-                        <option value="instrutor" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'instrutor') ? 'selected' : '' ?>>Instrutor</option>
-                        <option value="portaria" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'portaria') ? 'selected' : '' ?>>Portaria</option>
-                    </select>
-
-                    <input type="password" name="senha" placeholder="Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-func')" required>
-                    <div id="requisitos-senha-func"></div>
-
-                    <button type="submit" name="cadastrar_funcionario">Cadastrar</button>
-                </form>
-            </div>
-
-<?php
-// CADASTRO FUNCIONÁRIO
-if (isset($_POST['cadastrar_funcionario'])) {
-    $tela_atual = "cadastro_funcionario";
-
-    $dados_formulario = [
-        'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
-        'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
-        'tipo' => isset($_POST['tipo']) ? LimpaPost($_POST['tipo']) : '',
-        'senha' => isset($_POST['senha']) ? $_POST['senha'] : ''
-    ];
-
-    $erros = [];
-    if (empty($dados_formulario['nome'])) {
-        $erros[] = "O campo Nome é obrigatório";
-    }
-
-    if (empty($dados_formulario['cpf'])) {
-        $erros[] = "O campo CPF é obrigatório";
-    }
-
-    if (empty($dados_formulario['tipo'])) {
-        $erros[] = "Selecione o tipo de funcionário";
-    }
-
-    if (empty($dados_formulario['senha'])) {
-        $erros[] = "O campo Senha é obrigatório";
-    }
-
-    $cpf_limpo = '';
-    if (!empty($dados_formulario['cpf'])) {
-        $cpf_limpo = limparCPF($dados_formulario['cpf']);
-
-        if (!validarCPF($cpf_limpo)) {
-            $erros[] = "CPF inválido! Verifique os números digitados";
-        } else {
-            if (cpfJaExiste($cpf_limpo)) {
-                $erros[] = "Este CPF já está cadastrado no sistema";
-            }
-        }
-    }
-
-    if (!empty($dados_formulario['senha'])) {
-        $errosSenha = validarSenhaForte($dados_formulario['senha']);
-        if (!empty($errosSenha)) {
-            $erros = array_merge($erros, $errosSenha);
-        }
-    }
-
-    if (empty($erros)) {
-        $cpf_formatado = formatarCPF($cpf_limpo);
-        $senha_hash = hashSenha($dados_formulario['senha']);
-
-        try {
-            $sql = "INSERT INTO funcionario (nome, cpf, tipo, senha_hash) VALUES (?, ?, ?, ?)";
-            $params = [
-                $dados_formulario['nome'],
-                $cpf_formatado,
-                $dados_formulario['tipo'],
-                $senha_hash
+            $dados_formulario = [
+                'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
+                'matricula' => isset($_POST['matricula']) ? LimpaPost($_POST['matricula']) : '',
+                'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
+                'senha' => isset($_POST['senha']) ? $_POST['senha'] : '',
+                'data_nascimento' => isset($_POST['data_nascimento']) ? $_POST['data_nascimento'] : '',
+                'turma' => isset($_POST['turma']) ? LimpaPost($_POST['turma']) : ''
             ];
 
-            $stmt = $conn->prepare($sql);
-            $resultado = $stmt->execute($params);
+            $erros = [];
 
-            if ($resultado) {
-                $msg_login = "Funcionário cadastrado com sucesso! Faça login para acessar o sistema.";
-                $msg_type = "success";
-                $tela_atual = "login";
-                $dados_formulario = [];
-            } else {
-                $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
+            if (empty($dados_formulario['nome'])) {
+                $erros[] = "O campo Nome é obrigatório";
             }
-        } catch (PDOException $e) {
-            $erros[] = "Erro ao cadastrar no banco de dados. Verifique os dados e tente novamente.";
-            error_log("Erro ao cadastrar funcionário: " . $e->getMessage());
-        }
-    }
 
-    if (!empty($erros)) {
-        $msg_cad_func = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
-        $msg_type = "error";
-    }
-}
+            if (empty($dados_formulario['matricula'])) {
+                $erros[] = "O campo Matrícula é obrigatório";
+            }
 
-if (isset($_POST['logar'])) {
-    $tela_atual = "login";
+            if (empty($dados_formulario['cpf'])) {
+                $erros[] = "O campo CPF é obrigatório";
+            }
 
-    $login_input = isset($_POST['login_input']) ? LimpaPost($_POST['login_input']) : '';
-    $senha = isset($_POST['senha']) ? $_POST['senha'] : '';
+            if (empty($dados_formulario['senha'])) {
+                $erros[] = "O campo Senha é obrigatório";
+            }
 
-    if (empty($login_input) || empty($senha)) {
-        $msg_login = "Preencha todos os campos para fazer login!";
-        $msg_type = "error";
-    } else {
-        $usuario_encontrado = false;
-        $cpf_limpo = limparCPF($login_input);
-        $cpf_formatado = formatarCPF($cpf_limpo);
+            if (empty($dados_formulario['data_nascimento'])) {
+                $erros[] = "O campo Data de Nascimento é obrigatório";
+            }
 
+            if (empty($dados_formulario['turma'])) {
+                $erros[] = "O campo Turma é obrigatório";
+            }
 
+            if (!empty($dados_formulario['cpf'])) {
+                $cpf_limpo = limparCPF($dados_formulario['cpf']);
 
-        try {
-            $stmt = $conn->prepare("SELECT * FROM aluno WHERE matricula = ? OR cpf = ? OR cpf = ? LIMIT 1");
-            $stmt->execute([$login_input, $cpf_formatado, $cpf_limpo]);
-            $aluno = $stmt->fetch();
-
-            if ($aluno) {
-                if (password_verify($senha, $aluno['senha_hash'])) {
-                    $_SESSION['id'] = $aluno['id_aluno'];
-                    $_SESSION['nome'] = $aluno['nome'];
-                    $_SESSION['tipo_user'] = 'aluno';
-                    header("Location: index.php");
-                    exit;
+                if (!validarCPF($cpf_limpo)) {
+                    $erros[] = "CPF inválido! Verifique os números digitados";
                 } else {
-                    $msg_login = "Senha incorreta! Verifique e tente novamente.";
-                    $msg_type = "error";
-                    $usuario_encontrado = true;
-                }
-            }
-        } catch (PDOException $e) {
-            error_log("Erro ao buscar aluno: " . $e->getMessage());
-        }
-
-        if (!$usuario_encontrado && $aluno === false) {
-            try {
-                $stmt = $conn->prepare("SELECT * FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
-                $stmt->execute([$cpf_formatado, $cpf_limpo]);
-
-                $func = $stmt->fetch();
-
-                if ($func) {
-                    if (password_verify($senha, $func['senha_hash'])) {
-                        $_SESSION['id'] = $func['id_funcionario'];
-                        $_SESSION['nome'] = $func['nome'];
-                        $_SESSION['tipo_user'] = $func['tipo'];
-                        header("Location: index.php");
-                        exit;
-                    } else {
-                        $msg_login = "Senha incorreta! Verifique e tente novamente.";
-                        $msg_type = "error";
-                        $usuario_encontrado = true;
+                    if (cpfJaExiste($cpf_limpo)) {
+                        $erros[] = "Este CPF já está cadastrado no sistema";
                     }
                 }
-            } catch (PDOException $e) {
-                error_log("Erro ao buscar funcionário: " . $e->getMessage());
+            }
+
+            if (!empty($dados_formulario['senha'])) {
+                $errosSenha = validarSenhaForte($dados_formulario['senha']);
+                if (!empty($errosSenha)) {
+                    $erros = array_merge($erros, $errosSenha);
+                }
+            }
+
+            if (!empty($dados_formulario['matricula'])) {
+                if (matriculaJaExiste($dados_formulario['matricula'], null, 'aluno')) {
+                    $erros[] = "Esta matrícula já está cadastrada no sistema";
+                }
+            }
+
+            if (!empty($dados_formulario['data_nascimento'])) {
+                if (!validarData($dados_formulario['data_nascimento'])) {
+                    $erros[] = "Data de nascimento inválida";
+                } else {
+                    $idade = calcularIdade($dados_formulario['data_nascimento']);
+                    if ($idade < 14) {
+                        $erros[] = "É necessário ter pelo menos 14 anos para se cadastrar";
+                    }
+                }
+            }
+
+            if (empty($erros)) {
+                $celular = '00000000000';
+                $cpf_formatado = formatarCPF($cpf_limpo);
+                $senha_hash = hashSenha($dados_formulario['senha']);
+
+                try {
+                    $stmt = $conn->prepare("INSERT INTO aluno (nome, matricula, cpf, celular, senha_hash, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([
+                        $dados_formulario['nome'],
+                        $dados_formulario['matricula'],
+                        $cpf_formatado,
+                        $celular,
+                        $senha_hash,
+                        $dados_formulario['data_nascimento']
+                    ]);
+
+                    $msg_login = "Aluno cadastrado com sucesso! Faça login para acessar o sistema.";
+                    $msg_type = "success";
+                    $tela_atual = "login";
+                    $dados_formulario = [];
+                } catch (PDOException $e) {
+                    $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
+                    error_log("Erro ao cadastrar aluno: " . $e->getMessage());
+                }
+            }
+
+            if (!empty($erros)) {
+                $msg_cad_aluno = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
+                $msg_type = "error";
             }
         }
 
-        if (!$usuario_encontrado && empty($msg_login)) {
-            $msg_login = "Usuário não encontrado. Verifique sua matrícula ou CPF.";
-            $msg_type = "error";
-        }
-    }
-}
+        ?>
+        <!-- CADASTRO FUNCIONÁRIO -->
+        <div id="cadastro_funcionario" class="section" style="display: <?= $tela_atual == 'cadastro_funcionario' ? 'block' : 'none' ?>;">
+            <?php if (!empty($msg_cad_func)) : ?>
+                <div class="msg <?= $msg_type ?>"><?= $msg_cad_func ?></div>
+            <?php endif; ?>
 
-?>
+            <form method="POST">
+                <input type="text" name="nome" placeholder="Nome Completo" value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
+
+                <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)" maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
+
+                <select name="tipo" required>
+                    <option value="">Selecione o Tipo</option>
+                    <option value="pedagógico" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'pedagógico') ? 'selected' : '' ?>>Pedagógico</option>
+                    <option value="instrutor" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'instrutor') ? 'selected' : '' ?>>Instrutor</option>
+                    <option value="portaria" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'portaria') ? 'selected' : '' ?>>Portaria</option>
+                </select>
+
+                <input type="password" name="senha" placeholder="Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-func')" required>
+                <div id="requisitos-senha-func"></div>
+
+                <button type="submit" name="cadastrar_funcionario">Cadastrar</button>
+            </form>
+        </div>
+
+        <?php
+        // CADASTRO FUNCIONÁRIO
+        if (isset($_POST['cadastrar_funcionario'])) {
+            $tela_atual = "cadastro_funcionario";
+
+            $dados_formulario = [
+                'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
+                'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
+                'tipo' => isset($_POST['tipo']) ? LimpaPost($_POST['tipo']) : '',
+                'senha' => isset($_POST['senha']) ? $_POST['senha'] : ''
+            ];
+
+            $erros = [];
+            if (empty($dados_formulario['nome'])) {
+                $erros[] = "O campo Nome é obrigatório";
+            }
+
+            if (empty($dados_formulario['cpf'])) {
+                $erros[] = "O campo CPF é obrigatório";
+            }
+
+            if (empty($dados_formulario['tipo'])) {
+                $erros[] = "Selecione o tipo de funcionário";
+            }
+
+            if (empty($dados_formulario['senha'])) {
+                $erros[] = "O campo Senha é obrigatório";
+            }
+
+            $cpf_limpo = '';
+            if (!empty($dados_formulario['cpf'])) {
+                $cpf_limpo = limparCPF($dados_formulario['cpf']);
+
+                if (!validarCPF($cpf_limpo)) {
+                    $erros[] = "CPF inválido! Verifique os números digitados";
+                } else {
+                    if (cpfJaExiste($cpf_limpo)) {
+                        $erros[] = "Este CPF já está cadastrado no sistema";
+                    }
+                }
+            }
+
+            if (!empty($dados_formulario['senha'])) {
+                $errosSenha = validarSenhaForte($dados_formulario['senha']);
+                if (!empty($errosSenha)) {
+                    $erros = array_merge($erros, $errosSenha);
+                }
+            }
+
+            if (empty($erros)) {
+                $cpf_formatado = formatarCPF($cpf_limpo);
+                $senha_hash = hashSenha($dados_formulario['senha']);
+
+                try {
+                    $sql = "INSERT INTO funcionario (nome, cpf, tipo, senha_hash) VALUES (?, ?, ?, ?)";
+                    $params = [
+                        $dados_formulario['nome'],
+                        $cpf_formatado,
+                        $dados_formulario['tipo'],
+                        $senha_hash
+                    ];
+
+                    $stmt = $conn->prepare($sql);
+                    $resultado = $stmt->execute($params);
+
+                    if ($resultado) {
+                        $msg_login = "Funcionário cadastrado com sucesso! Faça login para acessar o sistema.";
+                        $msg_type = "success";
+                        $tela_atual = "login";
+                        $dados_formulario = [];
+                    } else {
+                        $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
+                    }
+                } catch (PDOException $e) {
+                    $erros[] = "Erro ao cadastrar no banco de dados. Verifique os dados e tente novamente.";
+                    error_log("Erro ao cadastrar funcionário: " . $e->getMessage());
+                }
+            }
+
+            if (!empty($erros)) {
+                $msg_cad_func = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
+                $msg_type = "error";
+            }
+        }
+
+        if (isset($_POST['logar'])) {
+            $tela_atual = "login";
+
+            $login_input = isset($_POST['login_input']) ? LimpaPost($_POST['login_input']) : '';
+            $senha = isset($_POST['senha']) ? $_POST['senha'] : '';
+
+            if (empty($login_input) || empty($senha)) {
+                $msg_login = "Preencha todos os campos para fazer login!";
+                $msg_type = "error";
+            } else {
+                $usuario_encontrado = false;
+                $cpf_limpo = limparCPF($login_input);
+                $cpf_formatado = formatarCPF($cpf_limpo);
+
+
+
+                try {
+                    $stmt = $conn->prepare("SELECT * FROM aluno WHERE matricula = ? OR cpf = ? OR cpf = ? LIMIT 1");
+                    $stmt->execute([$login_input, $cpf_formatado, $cpf_limpo]);
+                    $aluno = $stmt->fetch();
+
+                    if ($aluno) {
+                        if (password_verify($senha, $aluno['senha_hash'])) {
+                            $_SESSION['id'] = $aluno['id_aluno'];
+                            $_SESSION['nome'] = $aluno['nome'];
+                            $_SESSION['tipo_user'] = 'aluno';
+                            header("Location: index.php");
+                            exit;
+                        } else {
+                            $msg_login = "Senha incorreta! Verifique e tente novamente.";
+                            $msg_type = "error";
+                            $usuario_encontrado = true;
+                        }
+                    }
+                } catch (PDOException $e) {
+                    error_log("Erro ao buscar aluno: " . $e->getMessage());
+                }
+
+                if (!$usuario_encontrado && $aluno === false) {
+                    try {
+                        $stmt = $conn->prepare("SELECT * FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
+                        $stmt->execute([$cpf_formatado, $cpf_limpo]);
+
+                        $func = $stmt->fetch();
+
+                        if ($func) {
+                            if (password_verify($senha, $func['senha_hash'])) {
+                                $_SESSION['id'] = $func['id_funcionario'];
+                                $_SESSION['nome'] = $func['nome'];
+                                $_SESSION['tipo_user'] = $func['tipo'];
+                                header("Location: index.php");
+                                exit;
+                            } else {
+                                $msg_login = "Senha incorreta! Verifique e tente novamente.";
+                                $msg_type = "error";
+                                $usuario_encontrado = true;
+                            }
+                        }
+                    } catch (PDOException $e) {
+                        error_log("Erro ao buscar funcionário: " . $e->getMessage());
+                    }
+                }
+
+                if (!$usuario_encontrado && empty($msg_login)) {
+                    $msg_login = "Usuário não encontrado. Verifique sua matrícula ou CPF.";
+                    $msg_type = "error";
+                }
+            }
+        }
+
+        ?>
         <!-- ALUNO -->
         <?php if ($tipo_user == 'aluno'): ?>
             <div id="info" class="section">
