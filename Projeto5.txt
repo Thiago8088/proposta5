@@ -1,0 +1,233 @@
+O sistema tem que ser o mais simples possivel e nao ficar pesado para nao ter lentidão para nao ter problema com a internet;
+
+carga horario do curso nao precisa;
+
+-Informações do Aluno: 
+	Matricula;                        
+	Nome Completo; 
+	Nascimento; 
+	CPF;   ----------->// Pedagogico que vai cadastrar essas Informações do aluno, aluno so vai ter a matricula e colocar o cpf e resetar a senha dele.
+	Contato Empresa (NULL);
+	Contato Familia (NULL); 
+	Senha (NULL);
+	empresa (LÓGICA, NULL"POIS ELE NAO PODE SER DE EMPRESA"); // OPCIONAL
+
+-Informações do Funcionario:
+	Nome completo;
+	CPF (NULL);
+	Senha;
+	Função (PORTEIRO, INSTRUTOR, PEDAGOGICO);
+
+-Lógica do sistema:
+	Se ele for de empresa tem que mandar uma noificação para empresa para ir embora;
+	Se ele for de menor tem que ligar ter a parte do resposavel para ligar, senao so vai aceitar a liberação dele;
+	instrutor pode cancelar o processo de saída do aluno;
+	data de nascimento;
+	pegar unidade curricular do de cada curso;
+	validação de cpf;
+	botão cancelar saída do aluno;
+	colocar o botão rejeitar caso o aluno desista de ir embora;
+
+-Esqueceu senha:
+	So colocar um input para colocar de nome de baixo do cpf, quando digitar o cpf ja vai prencher automatico o nome conforme o cpf;
+
+-Pedagogico:
+	Ela vai cadastrar os alunos dentro da pagina de pedagogico(Coloca no navBar cadastrar aluno que via ser rocar o nome de gerenciar turmas e colocar cadastrar o aluno que vai tudo e mais qual e a turma dele);
+	vai cadastrar os funcionarios dentro da pagina dela(Vai colocar no navBAr cadastrar o funcionario);
+	vai ter solicitações nao navbar para ver todas as solicitações;
+	Aguradando resposavel tem que ter no navbar se o aluno for menor de idade se nao for so vai aceiatr a liberação e vai gerar o codigo para ele ir embora automatico;
+	Aguardando portario tem que ter no navbar;
+	Solicitações liberadas e solicitações recusadas tem que junta em 1 que vai ser o nome de todas as solicitações que consegue filtrar por solitações liberadas e recusar separado por dois card quando clica voce consegue ver, ver aluno liberados  recusados vai colocar dentro de todas as solicitações tambem;
+	O resto e assim mesmo;
+
+-Instrutor:
+	A pagina pode ser a mesam so tem que mexer na logica;
+	instrutor pode cancelar o processo de saída do aluno;
+	colocar o botão rejeitar caso o aluno desista de ir embora "Quando desistir vai cancelar automatica no sistema do pedagogico";
+
+-Aluno:
+	Vai melhorar as informaçoes do aluno;
+	E vai fazer a parte da frquencia em formado de grafico de todas as unidade curriuclar que o aluno foi embora para que contabiliza ver se ele esta quais reprovando ou nao e vai notificar ele com uma mensagem no canto superior direito falando isso;
+
+-CSS:
+	Corrigir o css todo para que fica sem erro, e deixar todas as paginas resposivo;
+
+JS:
+	Corrigir todos os script do codigo;
+
+PHP:
+	Corrigir todos os php do site;
+
+	APAGAR CODIGO QUE NAO SAO UTILIZADOS OU ESTA DUPLICADO NO PROJETO;
+
+
+
+	OBJETIVO:
+Criar um sistema simples, leve e otimizado, evitando lentidão e problemas com internet.
+Tudo deve ser limpo, responsivo e sem códigos duplicados.
+
+1. REGRAS GERAIS DO SISTEMA
+
+O sistema deve ser o mais simples e leve possível.
+
+Não pode ter lentidão nem sobrecarga.
+
+Remover códigos redundantes, duplicados ou inúteis.
+
+Corrigir todos os erros de:
+
+CSS
+
+JS
+
+PHP
+
+Garantir que todas as páginas sejam totalmente responsivas.
+
+2. CADASTRO E INFORMAÇÕES — ALUNO
+
+Campos necessários:
+
+Matrícula (aluno usa para login)
+
+Nome Completo
+
+Data de Nascimento
+
+CPF
+→ Pedagógico cadastra; o aluno só usa para resetar senha.
+
+Contato Empresa (NULL)
+
+Contato Família (NULL)
+
+Senha (NULL)
+
+Empresa (NULL, lógica: aluno não deve ter empresa)
+
+3. CADASTRO E INFORMAÇÕES — FUNCIONÁRIO
+
+Campos necessários:
+
+Nome Completo
+
+CPF (NULL)
+
+Senha
+
+Função:
+
+Porteiro
+
+Instrutor
+
+Pedagógico
+
+4. LÓGICA DO SISTEMA
+
+Se o aluno estiver vinculado à empresa: enviar notificação para empresa liberar saída.
+
+Se o aluno for menor de idade:
+
+aparecer etapa de aguardando responsável
+
+responsável deve liberar
+
+Se o aluno for maior de idade:
+
+liberação automática normal
+
+Instrutor pode cancelar o processo de saída do aluno.
+
+Implementar:
+
+Validação de CPF
+
+Data de nascimento
+
+Unidade curricular de cada curso
+
+Botão Cancelar saída
+
+Botão Rejeitar saída (caso aluno desista)
+
+5. ESQUECEU A SENHA
+
+Apenas 1 input para CPF.
+
+Ao digitar o CPF → preencher automaticamente o nome do aluno vinculado.
+
+6. PAINEL PEDAGÓGICO
+
+No navbar adicionar:
+
+Cadastrar Aluno
+(substitui “Gerenciar Turmas”; inclui turma + todas informações do aluno)
+
+Cadastrar Funcionário
+
+Solicitações
+
+Aguardando Responsável
+(apenas quando aluno for menor)
+
+Aguardando Porteiro
+
+Todas as solicitações
+→ Filtro para:
+- Liberadas
+- Recusadas
+exibidas em 2 cards separados.
+
+Quando aluno desistir, o instrutor cancela → cancelamento automático no sistema pedagógico.
+
+7. PAINEL INSTRUTOR
+
+Página é a mesma, apenas alterar lógica.
+
+Permissões:
+
+Cancelar processo de saída
+
+Rejeitar saída se aluno desistir (gera cancelamento automático no pedagógico)
+
+8. PAINEL ALUNO
+
+Melhorar visual e informações.
+
+Criar gráfico de frequência por unidade curricular:
+
+Quantidade de vezes que o aluno saiu
+
+Acompanhamento de risco de reprovação
+
+Sistema deve notificar o aluno (alerta no canto superior direito)
+quando estiver prestes a reprovar.
+
+9. CSS
+
+Revisar tudo.
+
+Corrigir erros.
+
+Tornar todas as telas 100% responsivas.
+
+Remover classes inúteis ou repetidas.
+
+10. JAVASCRIPT
+
+Corrigir todos os scripts.
+
+Remover funções duplicadas ou não utilizadas.
+
+Otimizar performance.
+
+11. PHP
+
+Corrigir todos os arquivos PHP.
+
+Remover códigos que não são usados.
+
+Remover duplicidades.
+
+Melhorar segurança e organização do backend.
