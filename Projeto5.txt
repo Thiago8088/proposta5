@@ -57,5 +57,177 @@ JS:
 
 PHP:
 	Corrigir todos os php do site;
-	
+
 	APAGAR CODIGO QUE NAO SAO UTILIZADOS OU ESTA DUPLICADO NO PROJETO;
+
+
+
+	OBJETIVO:
+Criar um sistema simples, leve e otimizado, evitando lentidão e problemas com internet.
+Tudo deve ser limpo, responsivo e sem códigos duplicados.
+
+1. REGRAS GERAIS DO SISTEMA
+
+O sistema deve ser o mais simples e leve possível.
+
+Não pode ter lentidão nem sobrecarga.
+
+Remover códigos redundantes, duplicados ou inúteis.
+
+Corrigir todos os erros de:
+
+CSS
+
+JS
+
+PHP
+
+Garantir que todas as páginas sejam totalmente responsivas.
+
+2. CADASTRO E INFORMAÇÕES — ALUNO
+
+Campos necessários:
+
+Matrícula (aluno usa para login)
+
+Nome Completo
+
+Data de Nascimento
+
+CPF
+→ Pedagógico cadastra; o aluno só usa para resetar senha.
+
+Contato Empresa (NULL)
+
+Contato Família (NULL)
+
+Senha (NULL)
+
+Empresa (NULL, lógica: aluno não deve ter empresa)
+
+3. CADASTRO E INFORMAÇÕES — FUNCIONÁRIO
+
+Campos necessários:
+
+Nome Completo
+
+CPF (NULL)
+
+Senha
+
+Função:
+
+Porteiro
+
+Instrutor
+
+Pedagógico
+
+4. LÓGICA DO SISTEMA
+
+Se o aluno estiver vinculado à empresa: enviar notificação para empresa liberar saída.
+
+Se o aluno for menor de idade:
+
+aparecer etapa de aguardando responsável
+
+responsável deve liberar
+
+Se o aluno for maior de idade:
+
+liberação automática normal
+
+Instrutor pode cancelar o processo de saída do aluno.
+
+Implementar:
+
+Validação de CPF
+
+Data de nascimento
+
+Unidade curricular de cada curso
+
+Botão Cancelar saída
+
+Botão Rejeitar saída (caso aluno desista)
+
+5. ESQUECEU A SENHA
+
+Apenas 1 input para CPF.
+
+Ao digitar o CPF → preencher automaticamente o nome do aluno vinculado.
+
+6. PAINEL PEDAGÓGICO
+
+No navbar adicionar:
+
+Cadastrar Aluno
+(substitui “Gerenciar Turmas”; inclui turma + todas informações do aluno)
+
+Cadastrar Funcionário
+
+Solicitações
+
+Aguardando Responsável
+(apenas quando aluno for menor)
+
+Aguardando Porteiro
+
+Todas as solicitações
+→ Filtro para:
+- Liberadas
+- Recusadas
+exibidas em 2 cards separados.
+
+Quando aluno desistir, o instrutor cancela → cancelamento automático no sistema pedagógico.
+
+7. PAINEL INSTRUTOR
+
+Página é a mesma, apenas alterar lógica.
+
+Permissões:
+
+Cancelar processo de saída
+
+Rejeitar saída se aluno desistir (gera cancelamento automático no pedagógico)
+
+8. PAINEL ALUNO
+
+Melhorar visual e informações.
+
+Criar gráfico de frequência por unidade curricular:
+
+Quantidade de vezes que o aluno saiu
+
+Acompanhamento de risco de reprovação
+
+Sistema deve notificar o aluno (alerta no canto superior direito)
+quando estiver prestes a reprovar.
+
+9. CSS
+
+Revisar tudo.
+
+Corrigir erros.
+
+Tornar todas as telas 100% responsivas.
+
+Remover classes inúteis ou repetidas.
+
+10. JAVASCRIPT
+
+Corrigir todos os scripts.
+
+Remover funções duplicadas ou não utilizadas.
+
+Otimizar performance.
+
+11. PHP
+
+Corrigir todos os arquivos PHP.
+
+Remover códigos que não são usados.
+
+Remover duplicidades.
+
+Melhorar segurança e organização do backend.
