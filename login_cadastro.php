@@ -462,8 +462,6 @@ if (isset($_POST['reset_senha'])) {
                     <input type="password" name="senha" placeholder="Senha" required>
                     <button type="submit" name="logar">Entrar</button>
                 </form>
-                <p class="toggle" onclick="mostrar('cadastro_aluno')">Cadastrar Aluno</p>
-                <p class="toggle" onclick="mostrar('cadastro_funcionario')">Cadastrar Funcionário</p>
                 <p class="toggle" onclick="mostrar('reset_senha')">Esqueci minha senha</p>
             </div>
 
