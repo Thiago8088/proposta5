@@ -7,7 +7,6 @@ $msg_cad_aluno = "";
 $msg_cad_func = "";
 $msg_reset = "";
 $msg_type = "";
-
 $tela_atual = "login";
 $dados_formulario = [];
 
@@ -215,8 +214,6 @@ if (isset($_POST['logar'])) {
         $usuario_encontrado = false;
         $cpf_limpo = limparCPF($login_input);
         $cpf_formatado = formatarCPF($cpf_limpo);
-
-
 
         try {
             $stmt = $conn->prepare("SELECT * FROM aluno WHERE matricula = ? OR cpf = ? OR cpf = ? LIMIT 1");
