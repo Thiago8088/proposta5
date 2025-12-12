@@ -950,6 +950,7 @@ if (isset($_POST['cadastrar_aluno'])) {
 
                     <button type="submit" name="cadastrar_funcionario">Cadastrar</button>
                 </form>
+
             </div>
 
 <?php
