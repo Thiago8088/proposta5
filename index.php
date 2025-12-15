@@ -1152,27 +1152,22 @@ if ($tipo_user == 'portaria') {
                 </div>
             </div>
 
-            <!-- HISTÓRICO DE SOLICITAÇÕES (substitui liberadas + recusadas) -->
+            <!-- HISTÓRICO DE SOLICITAÇÕES-->
             <div id="historico_solicitacoes" class="section" style="display:none;">
                 <div class="container">
                     <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Histórico de Solicitações</h3>
 
                     <div class="tabs-container">
-                        <button class="tab-btn active" onclick="mostrarHistoricoTab('liberadas')">Liberadas</button>
+                        <button class="tab-btn" onclick="mostrarHistoricoTab('liberadas')">Liberadas</button>
                         <button class="tab-btn" onclick="mostrarHistoricoTab('recusadas')">Recusadas</button>
                         <button class="tab-btn" onclick="mostrarHistoricoTab('todas')">Todas</button>
                     </div>
 
                     <script>
                         function mostrarHistoricoTab(tipo) {
-                            // Remove active de todos os botões
                             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
                             event.target.classList.add('active');
-
-                            // Esconde todos os conteúdos
                             document.querySelectorAll('.historico-content').forEach(el => el.classList.remove('active'));
-
-                            // Mostra o selecionado
                             document.getElementById('historico-' + tipo).classList.add('active');
                         }
                     </script>
@@ -1368,7 +1363,7 @@ if ($tipo_user == 'portaria') {
                     </div>
                 </div>
             </div>
-            <!-- HISTÓRICO POR ALUNO (substitui ver alunos liberados + recusados) -->
+            <!-- HISTÓRICO POR ALUNO -->
             <div id="historico_alunos" class="section" style="display:none;">
                 <div class="container">
                     <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Histórico por Aluno/Turma</h3>
@@ -1620,58 +1615,94 @@ if ($tipo_user == 'portaria') {
 
             <!-- GERENCIAR TURMAS -->
             <div id="turmas" class="section" style="display:none;">
-                <h3>Gerenciar Turmas</h3>
-                <form method="POST" style="margin-bottom: 20px;">
-                    <select name="id_curso_turma" id="id_curso_turma" required onchange="calcularCargaTotal()">
-                        <option value="">Selecione o curso</option>
-                        <?php foreach ($cursos as $c): ?>
-                            <option value="<?php echo $c['id_curso']; ?>"><?php echo htmlspecialchars($c['nome']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <input type="text" name="nome_turma" placeholder="Nome da turma" required>
-                    <input type="number" name="carga_horaria_total" id="carga_horaria_total" placeholder="Carga horária total" style="background:#f0f0f0;">
-                    <button type="submit" name="cadastrar_turma">Cadastrar Turma</button>
-                </form>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Curso</th>
-                            <th>Nome da Turma</th>
-                            <th>Carga Horária Total</th>
-                            <th>Alunos Matriculados</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($turmas as $t): ?>
-                            <tr id="display-turma-<?php echo $t['id_turma']; ?>">
-                                <td><?php echo htmlspecialchars($t['curso_nome']); ?></td>
-                                <td><?php echo htmlspecialchars($t['nome']); ?></td>
-                                <td><?php echo $t['carga_horaria_total'] ?? 0; ?>h</td>
-                                <td><?php echo $conn->query("SELECT COUNT(*) as total FROM matricula WHERE id_turma = " . $t['id_turma'])->fetch()['total']; ?></td>
-                                <td>
-                                    <button onclick="mostrarEdicao('turma', <?php echo $t['id_turma']; ?>)" style="background: #007bff; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">Editar</button>
-                                    <form method="POST" style="display:inline;">
-                                        <input type="hidden" name="id_turma" value="<?php echo $t['id_turma']; ?>">
-                                        <button type="submit" name="deletar_turma" onclick="return confirm('Deseja excluir esta turma?')" style="background: #dc3545; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">Excluir</button>
-                                    </form>
-                                </td>
+                <div class="container">
+                    <h3>Gerenciar Turmas</h3>
+                    <div class="form-cadastro-centralizado">
+                        <form method="POST">
+                            <select name="id_curso_turma" id="id_curso_turma" required onchange="calcularCargaTotal()">
+                                <option value="">Selecione o curso</option>
+                                <?php foreach ($cursos as $c): ?>
+                                    <option value="<?php echo $c['id_curso']; ?>">
+                                        <?php echo htmlspecialchars($c['nome']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+
+                            <input type="text" name="nome_turma" placeholder="Nome da turma" required>
+
+                            <input type="number" name="carga_horaria_total" id="carga_horaria_total"
+                                placeholder="Carga horária total" style="background:#f0f0f0;">
+
+                            <button type="submit" name="cadastrar_turma">Cadastrar Turma</button>
+                        </form>
+                    </div>
+                    <h4 style="text-align:center; margin: 30px 0 20px 0; color:#004a8f;">
+                        Lista de Turmas Cadastradas
+                    </h4>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Curso</th>
+                                <th>Nome da Turma</th>
+                                <th>Carga Horária Total</th>
+                                <th>Alunos Matriculados</th>
+                                <th>Ações</th>
                             </tr>
-                            <tr id="form-editar-turma-<?php echo $t['id_turma']; ?>" style="display:none;">
-                                <td colspan="5">
-                                    <form method="POST" style="display:flex; gap:10px; align-items:center;">
-                                        <input type="hidden" name="id_turma" value="<?php echo $t['id_turma']; ?>">
-                                        <input type="text" style="color: black; width: 150px;border-radius: 3px; cursor: pointer;" name="nome_turma" value="<?php echo htmlspecialchars($t['nome']); ?>" placeholder="Rescreva o nome da Turma" required style="flex:2;">
-                                        <input type="number" style="color: black;
-                                            width: 150px; border-radius: 3px; cursor: pointer;" name="carga_horaria_total" value="<?php echo $t['carga_horaria_total'] ?? 0; ?>" placeholder="Rescreva a nova Carga horaria" required min="0" style="flex:1;">
-                                        <button type="submit" name="editar_turma" style="background: #28a745; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">Salvar</button>
-                                        <button type="button" onclick="ocultarEdicao('turma', <?php echo $t['id_turma']; ?>)" style="background: #6c757d; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">Cancelar</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($turmas as $t): ?>
+                                <tr id="display-turma-<?php echo $t['id_turma']; ?>">
+                                    <td><?php echo htmlspecialchars($t['curso_nome']); ?></td>
+                                    <td><?php echo htmlspecialchars($t['nome']); ?></td>
+                                    <td><?php echo $t['carga_horaria_total'] ?? 0; ?>h</td>
+                                    <td>
+                                        <?php
+                                        echo $conn->query("SELECT COUNT(*) as total FROM matricula WHERE id_turma = " . $t['id_turma'])->fetch()['total'];
+                                        ?>
+                                    </td>
+                                    <td>
+                                        <button onclick="mostrarEdicao('turma', <?php echo $t['id_turma']; ?>)"
+                                            style="background: #007bff; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">
+                                            Editar
+                                        </button>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="id_turma" value="<?php echo $t['id_turma']; ?>">
+                                            <button type="submit" name="deletar_turma"
+                                                onclick="return confirm('Deseja excluir esta turma?')"
+                                                style="background: #dc3545; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;">
+                                                Excluir
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <tr id="form-editar-turma-<?php echo $t['id_turma']; ?>" style="display:none;">
+                                    <td colspan="5">
+                                        <form method="POST" style="display:flex; gap:10px; align-items:center;">
+                                            <input type="hidden" name="id_turma" value="<?php echo $t['id_turma']; ?>">
+                                            <input type="text" name="nome_turma"
+                                                value="<?php echo htmlspecialchars($t['nome']); ?>"
+                                                placeholder="Nome da Turma"
+                                                required style="flex:2; color: black; border-radius: 3px;">
+                                            <input type="number" name="carga_horaria_total"
+                                                value="<?php echo $t['carga_horaria_total'] ?? 0; ?>"
+                                                placeholder="Carga Horária"
+                                                required min="0" style="flex:1; color: black; border-radius: 3px;">
+                                            <button type="submit" name="editar_turma"
+                                                style="background: #28a745; color: white; padding: 8px 16px; border: none; border-radius: 3px; cursor: pointer; width: auto;">
+                                                Salvar
+                                            </button>
+                                            <button type="button" onclick="ocultarEdicao('turma', <?php echo $t['id_turma']; ?>)"
+                                                style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 3px; cursor: pointer; width: auto;">
+                                                Cancelar
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
     </div>
 <?php endif; ?>
@@ -1679,16 +1710,8 @@ if ($tipo_user == 'portaria') {
 <!-- GERENCIAR ALUNOS -->
 <div id="gerenciar_alunos" class="section" style="display:none;">
     <div class="container">
-        <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Gerenciar Alunos</h3>
-
-        <!-- Formulário de Cadastro -->
         <div class="form-cadastro-centralizado">
             <h4 style="text-align:center; margin-bottom:20px;">Cadastrar Novo Aluno</h4>
-
-            <?php if (!empty($msg_cad_aluno)) : ?>
-                <div class="msg <?= $msg_type ?>"><?= $msg_cad_aluno ?></div>
-            <?php endif; ?>
-
             <form method="POST">
                 <div class="form-row">
                     <input type="text" name="nome" placeholder="Nome Completo"
@@ -2018,8 +2041,6 @@ if (isset($_POST['cadastrar_aluno'])) {
 <!-- GERENCIAR FUNCIONÁRIOS -->
 <div id="gerenciar_funcionarios" class="section" style="display:none;">
     <div class="container">
-        <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Gerenciar Funcionários</h3>
-
         <div class="form-cadastro-centralizado">
             <h4 style="text-align:center; margin-bottom:20px;">Cadastrar Novo Funcionário</h4>
 
