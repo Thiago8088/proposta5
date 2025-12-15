@@ -422,8 +422,8 @@ h4 {
 }
 
 .tab-btn.active {
-    background: #00bfff;
-    box-shadow: 0 4px 12px rgba(0, 191, 255, 0.4);
+    background: #003366;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
 .historico-content {
