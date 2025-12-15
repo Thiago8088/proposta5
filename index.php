@@ -647,197 +647,7 @@ if ($tipo_user == 'portaria') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Painel SENAI</title>
     <link rel="stylesheet" href="css/estilo.css">
-    <script>
-        function showSection(section) {
-            console.log('Mostrando seção:', section); // Debug
-
-            // Esconde todas as seções
-            document.querySelectorAll('.section').forEach(sec => {
-                sec.style.display = 'none';
-                sec.classList.remove('active');
-            });
-
-            // Mostra a seção selecionada
-            const sectionElement = document.getElementById(section);
-            if (sectionElement) {
-                sectionElement.style.display = 'block';
-                sectionElement.classList.add('active');
-                console.log('Seção encontrada e exibida:', section); // Debug
-            } else {
-                console.error('Seção não encontrada:', section); // Debug
-            }
-
-            // Remove classe active de todos os links
-            document.querySelectorAll('.navbar-menu a').forEach(link => {
-                link.classList.remove('active');
-            });
-
-            // Adiciona classe active no link clicado
-            if (event && event.target) {
-                event.target.classList.add('active');
-            }
-        }
-
-        // Nova função para alternar tabs do histórico
-        function mostrarHistoricoTab(tipo) {
-            console.log('Mostrando tab:', tipo); // Debug
-
-            // Remove active de todos os botões
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-
-            // Adiciona active no botão clicado
-            if (event && event.target) {
-                event.target.classList.add('active');
-            }
-
-            // Esconde todos os conteúdos
-            document.querySelectorAll('.historico-content').forEach(el => {
-                el.style.display = 'none';
-                el.classList.remove('active');
-            });
-
-            // Mostra o selecionado
-            const elemento = document.getElementById('historico-' + tipo);
-            if (elemento) {
-                elemento.style.display = 'block';
-                elemento.classList.add('active');
-                console.log('Tab exibida:', tipo); // Debug
-            } else {
-                console.error('Tab não encontrada:', 'historico-' + tipo); // Debug
-            }
-        }
-
-        // Carrega a primeira seção ao iniciar
-        window.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM carregado'); // Debug
-
-            const firstSection = document.querySelector('.navbar-menu a');
-            if (firstSection) {
-                firstSection.click();
-                console.log('Primeira seção clicada'); // Debug
-            }
-        });
-
-        function showList(type) {
-            document.querySelectorAll('.list').forEach(l => l.style.display = 'none');
-            const element = document.getElementById('list-' + type);
-            if (element) {
-                element.style.display = 'block';
-            }
-        }
-
-        function carregarMatriculas(idTurma) {
-            if (idTurma == '') {
-                document.getElementById('matriculas_turma').innerHTML = '';
-                return;
-            }
-
-            document.querySelectorAll('.lista-alunos-turma').forEach(el => el.style.display = 'none');
-
-            const lista = document.getElementById('alunos-turma-' + idTurma);
-            if (lista) {
-                lista.style.display = 'block';
-            }
-        }
-
-        function toggleOutro() {
-            const motivo = document.getElementById('motivo').value;
-            const divOutro = document.getElementById('motivo_outro_div');
-            divOutro.style.display = (motivo === '10') ? 'block' : 'none';
-        }
-
-        function calcularCargaTotal() {
-            const select = document.getElementById('id_curso_turma');
-            const idCurso = select.value;
-            if (!idCurso) return;
-
-            fetch('ajax_carga_curso.php?id_curso=' + idCurso)
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('carga_horaria_total').value = data.carga_total || 0;
-                });
-        }
-
-        function mostrarEdicao(tipo, id) {
-            document.getElementById('form-editar-' + tipo + '-' + id).style.display = 'block';
-            document.getElementById('display-' + tipo + '-' + id).style.display = 'none';
-        }
-
-        function ocultarEdicao(tipo, id) {
-            document.getElementById('form-editar-' + tipo + '-' + id).style.display = 'none';
-            document.getElementById('display-' + tipo + '-' + id).style.display = 'table-row';
-        }
-
-        function mostrarSolicitacoes(status) {
-            document.querySelectorAll('.solicitacoes-detalhadas').forEach(el => el.style.display = 'none');
-            const elemento = document.getElementById('solicitacoes-' + status);
-            if (elemento) {
-                elemento.style.display = 'block';
-            }
-        }
-
-        function filtrarSolicitacoesPorTurma() {
-            const turmaId = document.getElementById('filtro_turma_solicitacao').value;
-            const cards = document.querySelectorAll('.solicitacao-card-instrutor');
-
-            cards.forEach(card => {
-                if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        }
-
-        function filtrarLiberadosPorTurma() {
-            const turmaId = document.getElementById('filtro_turma_liberados').value;
-            const cards = document.querySelectorAll('.aluno-liberado-card');
-
-            cards.forEach(card => {
-                if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-        }
-
-        // Carrega a primeira seção ao iniciar
-        window.addEventListener('DOMContentLoaded', function() {
-            const firstSection = document.querySelector('.navbar-menu a');
-            if (firstSection) {
-                firstSection.click();
-            }
-        });
-
-        function carregarTurmasPorCurso(idCurso) {
-            const selectTurma = document.getElementById('turma_aluno');
-
-            if (idCurso == '') {
-                selectTurma.innerHTML = '<option value="">Primeiro selecione o curso</option>';
-                return;
-            }
-
-            // Fazer requisição AJAX para o próprio index.php
-            fetch('index.php?ajax=turmas_curso&id_curso=' + idCurso)
-                .then(response => response.json())
-                .then(data => {
-                    selectTurma.innerHTML = '<option value="">Selecione a turma</option>';
-                    data.forEach(turma => {
-                        const option = document.createElement('option');
-                        option.value = turma.id_turma;
-                        option.textContent = turma.nome;
-                        selectTurma.appendChild(option);
-                    });
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar turmas:', error);
-                    selectTurma.innerHTML = '<option value="">Erro ao carregar turmas</option>';
-                });
-        }
-    </script>
+    <script src="js/index.js" defer></script>
 </head>
 
 <body>
@@ -1968,7 +1778,6 @@ if (isset($_POST['cadastrar_aluno'])) {
         $senha_hash = hashSenha($dados_formulario['senha']);
 
         try {
-            // Verificar colunas disponíveis
             $columns = $conn->query("SHOW COLUMNS FROM aluno")->fetchAll(PDO::FETCH_COLUMN);
 
             $sql_fields = ['nome', 'matricula', 'cpf', 'celular', 'senha_hash', 'data_nascimento'];
@@ -1982,7 +1791,6 @@ if (isset($_POST['cadastrar_aluno'])) {
                 $dados_formulario['data_nascimento']
             ];
 
-            // Adicionar campos opcionais se existirem na tabela
             if (in_array('nome_responsavel', $columns) && !empty($dados_formulario['nome_responsavel'])) {
                 $sql_fields[] = 'nome_responsavel';
                 $sql_values[] = '?';
@@ -2013,7 +1821,6 @@ if (isset($_POST['cadastrar_aluno'])) {
 
             $id_aluno = $conn->lastInsertId();
 
-            // Criar matrícula na turma
             if (!empty($dados_formulario['id_turma'])) {
                 $stmt_matricula = $conn->prepare("INSERT INTO matricula (id_aluno, id_turma) VALUES (?, ?)");
                 $stmt_matricula->execute([$id_aluno, $dados_formulario['id_turma']]);
@@ -2023,7 +1830,6 @@ if (isset($_POST['cadastrar_aluno'])) {
             $msg_type = "success";
             $dados_formulario = [];
 
-            // Recarregar lista de alunos incompletos
             $alunos_incompletos = $conn->query("SELECT a.*, t.nome as turma_nome FROM aluno a LEFT JOIN matricula m ON a.id_aluno = m.id_aluno LEFT JOIN turma t ON m.id_turma = t.id_turma WHERE a.contato_responsavel IS NULL OR a.contato_responsavel = '' ORDER BY a.nome")->fetchAll();
         } catch (PDOException $e) {
             $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
@@ -2073,6 +1879,7 @@ if (isset($_POST['cadastrar_aluno'])) {
 </div>
 
 <?php
+
 // CADASTRO FUNCIONÁRIO
 if (isset($_POST['cadastrar_funcionario'])) {
     $tela_atual = "cadastro_funcionario";
@@ -2343,7 +2150,7 @@ if (isset($_POST['logar'])) {
         </div>
     </div>
 
-    <!-- ALUNOS LIBERADOS - SEÇÃO SEPARADA -->
+    <!-- ALUNOS LIBERADOS -->
     <div id="alunos_liberados_instrutor" class="section" style="display:none;">
         <div class="container">
             <h3>Alunos Liberados - Registro de Faltas</h3>
