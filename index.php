@@ -3,6 +3,29 @@ session_start();
 date_default_timezone_set('America/Sao_Paulo');
 require("db/conexao.php");
 
+// AJAX para carregar turmas por curso
+if (isset($_GET['ajax']) && $_GET['ajax'] == 'turmas_curso' && isset($_GET['id_curso'])) {
+    $id_curso = $_GET['id_curso'];
+
+    try {
+        $stmt = $conn->prepare("SELECT id_turma, nome FROM turma WHERE id_curso = ? ORDER BY nome");
+        $stmt->execute([$id_curso]);
+        $turmas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        header('Content-Type: application/json');
+        echo json_encode($turmas);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Erro ao buscar turmas']);
+        exit;
+    }
+}
+
+if (!isset($_SESSION['id'])) {
+    header("Location: login_cadastro.php");
+}
+
 if (!isset($_SESSION['id'])) {
     header("Location: login_cadastro.php");
     exit;
@@ -17,11 +40,8 @@ $msg_cad_aluno = "";
 $msg_cad_func = "";
 $msg_reset = "";
 $msg_type = "";
-
 $tela_atual = "login";
 $dados_formulario = [];
-
-
 
 
 // FUNÇÕES UTILITÁRIAS
@@ -629,23 +649,76 @@ if ($tipo_user == 'portaria') {
     <link rel="stylesheet" href="css/estilo.css">
     <script>
         function showSection(section) {
+            console.log('Mostrando seção:', section); // Debug
+
             // Esconde todas as seções
-            document.querySelectorAll('.section').forEach(sec => sec.style.display = 'none');
+            document.querySelectorAll('.section').forEach(sec => {
+                sec.style.display = 'none';
+                sec.classList.remove('active');
+            });
 
             // Mostra a seção selecionada
             const sectionElement = document.getElementById(section);
             if (sectionElement) {
                 sectionElement.style.display = 'block';
+                sectionElement.classList.add('active');
+                console.log('Seção encontrada e exibida:', section); // Debug
+            } else {
+                console.error('Seção não encontrada:', section); // Debug
             }
 
             // Remove classe active de todos os links
-            document.querySelectorAll('.navbar-menu a').forEach(link => link.classList.remove('active'));
+            document.querySelectorAll('.navbar-menu a').forEach(link => {
+                link.classList.remove('active');
+            });
 
             // Adiciona classe active no link clicado
             if (event && event.target) {
                 event.target.classList.add('active');
             }
         }
+
+        // Nova função para alternar tabs do histórico
+        function mostrarHistoricoTab(tipo) {
+            console.log('Mostrando tab:', tipo); // Debug
+
+            // Remove active de todos os botões
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Adiciona active no botão clicado
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+
+            // Esconde todos os conteúdos
+            document.querySelectorAll('.historico-content').forEach(el => {
+                el.style.display = 'none';
+                el.classList.remove('active');
+            });
+
+            // Mostra o selecionado
+            const elemento = document.getElementById('historico-' + tipo);
+            if (elemento) {
+                elemento.style.display = 'block';
+                elemento.classList.add('active');
+                console.log('Tab exibida:', tipo); // Debug
+            } else {
+                console.error('Tab não encontrada:', 'historico-' + tipo); // Debug
+            }
+        }
+
+        // Carrega a primeira seção ao iniciar
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM carregado'); // Debug
+
+            const firstSection = document.querySelector('.navbar-menu a');
+            if (firstSection) {
+                firstSection.click();
+                console.log('Primeira seção clicada'); // Debug
+            }
+        });
 
         function showList(type) {
             document.querySelectorAll('.list').forEach(l => l.style.display = 'none');
@@ -738,6 +811,32 @@ if ($tipo_user == 'portaria') {
                 firstSection.click();
             }
         });
+
+        function carregarTurmasPorCurso(idCurso) {
+            const selectTurma = document.getElementById('turma_aluno');
+
+            if (idCurso == '') {
+                selectTurma.innerHTML = '<option value="">Primeiro selecione o curso</option>';
+                return;
+            }
+
+            // Fazer requisição AJAX para o próprio index.php
+            fetch('index.php?ajax=turmas_curso&id_curso=' + idCurso)
+                .then(response => response.json())
+                .then(data => {
+                    selectTurma.innerHTML = '<option value="">Selecione a turma</option>';
+                    data.forEach(turma => {
+                        const option = document.createElement('option');
+                        option.value = turma.id_turma;
+                        option.textContent = turma.nome;
+                        selectTurma.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar turmas:', error);
+                    selectTurma.innerHTML = '<option value="">Erro ao carregar turmas</option>';
+                });
+        }
     </script>
 </head>
 
@@ -760,18 +859,14 @@ if ($tipo_user == 'portaria') {
                     <a href="#" onclick="showSection('solicitacoes'); return false;">Solicitações</a>
                     <a href="#" onclick="showSection('aguardando_responsavel'); return false;">Aguardando Responsável</a>
                     <a href="#" onclick="showSection('aguardando_portaria'); return false;">Aguardando Portaria</a>
-                    <a href="#" onclick="showSection('solicitacoes_liberadas'); return false;">Solicitações Liberadas</a>
-                    <a href="#" onclick="showSection('solicitacoes_recusadas'); return false;">Solicitações Recusadas</a>
-                    <a href="#" onclick="showSection('alunos_liberados_turma'); return false;">Ver Alunos Liberados</a>
-                    <a href="#" onclick="showSection('alunos_recusados_turma'); return false;">Ver Alunos Recusados</a>
+                    <a href="#" onclick="showSection('historico_solicitacoes'); return false;">Histórico de Solicitações</a>
+                    <a href="#" onclick="showSection('historico_alunos'); return false;">Histórico por Aluno</a>
                     <a href="#" onclick="showSection('cursos'); return false;">Gerenciar Cursos</a>
                     <a href="#" onclick="showSection('ucs'); return false;">Gerenciar UCs</a>
                     <a href="#" onclick="showSection('turmas'); return false;">Gerenciar Turmas</a>
-                    <a href="#" onclick="showSection('alunos'); return false;">Gerenciar Alunos</a>
-                    <a href="#" onclick="showSection('cadastro_aluno'); return false;">Cadastrar Alunos</a>
-                    <a href="#" onclick="showSection('cadastro_funcionario'); return false;">Cadastrar Funcionario</a>
-                    
-                    
+                    <a href="#" onclick="showSection('gerenciar_alunos'); return false;">Gerenciar Alunos</a>
+                    <a href="#" onclick="showSection('gerenciar_funcionarios'); return false;">Gerenciar Funcionários</a>
+
                 <?php elseif ($tipo_user == 'instrutor'): ?>
                     <a href="#" onclick="showSection('turmas_instrutor'); return false;">Minhas Turmas</a>
                     <a href="#" onclick="showSection('solicitacoes_instrutor'); return false;">Solicitações</a>
@@ -791,324 +886,6 @@ if ($tipo_user == 'portaria') {
                 <?php echo $msg; ?>
             </div>
         <?php endif; ?>
-
-        <!-- CADASTRO ALUNO -->
-            <div id="cadastro_aluno" class="section" style="display: <?= $tela_atual == 'cadastro_aluno' ? 'block' : 'none' ?>;">
-                <?php if (!empty($msg_cad_aluno)) : ?>
-                    <div class="msg <?= $msg_type ?>"><?= $msg_cad_aluno ?></div>
-                <?php endif; ?>
-
-                <form method="POST">
-    
-                    <input type="text" name="nome" placeholder="Nome Completo" value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
-
-                    <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)" maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
-
-                    <input type="text" name="matricula" placeholder="Matrícula" value="<?= isset($dados_formulario['matricula']) ? htmlspecialchars($dados_formulario['matricula']) : '' ?>" required>
-
-                    <input type="text" name="turma" placeholder="Turma" value="<?= isset($dados_formulario['turma']) ? htmlspecialchars($dados_formulario['turma']) : '' ?>" required>
-
-                    <label style="font-size:0.9em; color:#666;">Data de Nascimento:</label>
-                    <input type="date" name="data_nascimento" value="<?= isset($dados_formulario['data_nascimento']) ? htmlspecialchars($dados_formulario['data_nascimento']) : '' ?>" required>
-
-                    <input type="password" name="senha" placeholder="Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-aluno')" required>
-                    <div id="requisitos-senha-aluno"></div>
-
-                    <button type="submit" name="cadastrar_aluno">Cadastrar</button>
-                </form>
-            </div>
-
-            <!--CADASTRO ALUNO --> 
-            <?php 
-if (isset($_POST['cadastrar_aluno'])) {
-    $tela_atual = "cadastro_aluno";
-
-    $dados_formulario = [
-        'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
-        'matricula' => isset($_POST['matricula']) ? LimpaPost($_POST['matricula']) : '',
-        'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
-        'senha' => isset($_POST['senha']) ? $_POST['senha'] : '',
-        'data_nascimento' => isset($_POST['data_nascimento']) ? $_POST['data_nascimento'] : '',
-        'turma' => isset($_POST['turma']) ? LimpaPost($_POST['turma']) : ''
-    ];
-
-    $erros = [];
-
-    if (empty($dados_formulario['nome'])) {
-        $erros[] = "O campo Nome é obrigatório";
-    }
-
-    if (empty($dados_formulario['matricula'])) {
-        $erros[] = "O campo Matrícula é obrigatório";
-    }
-
-    if (empty($dados_formulario['cpf'])) {
-        $erros[] = "O campo CPF é obrigatório";
-    }
-
-    if (empty($dados_formulario['senha'])) {
-        $erros[] = "O campo Senha é obrigatório";
-    }
-
-    if (empty($dados_formulario['data_nascimento'])) {
-        $erros[] = "O campo Data de Nascimento é obrigatório";
-    }
-
-    if (empty($dados_formulario['turma'])) {
-        $erros[] = "O campo Turma é obrigatório";
-    }
-
-    if (!empty($dados_formulario['cpf'])) {
-        $cpf_limpo = limparCPF($dados_formulario['cpf']);
-
-        if (!validarCPF($cpf_limpo)) {
-            $erros[] = "CPF inválido! Verifique os números digitados";
-        } else {
-            if (cpfJaExiste($cpf_limpo)) {
-                $erros[] = "Este CPF já está cadastrado no sistema";
-            }
-        }
-    }
-
-    if (!empty($dados_formulario['senha'])) {
-        $errosSenha = validarSenhaForte($dados_formulario['senha']);
-        if (!empty($errosSenha)) {
-            $erros = array_merge($erros, $errosSenha);
-        }
-    }
-
-    if (!empty($dados_formulario['matricula'])) {
-        if (matriculaJaExiste($dados_formulario['matricula'], null, 'aluno')) {
-            $erros[] = "Esta matrícula já está cadastrada no sistema";
-        }
-    }
-
-    if (!empty($dados_formulario['data_nascimento'])) {
-        if (!validarData($dados_formulario['data_nascimento'])) {
-            $erros[] = "Data de nascimento inválida";
-        } else {
-            $idade = calcularIdade($dados_formulario['data_nascimento']);
-            if ($idade < 14) {
-                $erros[] = "É necessário ter pelo menos 14 anos para se cadastrar";
-            }
-        }
-    }
-
-    if (empty($erros)) {
-        $celular = '00000000000';
-        $cpf_formatado = formatarCPF($cpf_limpo);
-        $senha_hash = hashSenha($dados_formulario['senha']);
-
-        try {
-            $stmt = $conn->prepare("INSERT INTO aluno (nome, matricula, cpf, celular, senha_hash, data_nascimento) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([
-                $dados_formulario['nome'],
-                $dados_formulario['matricula'],
-                $cpf_formatado,
-                $celular,
-                $senha_hash,
-                $dados_formulario['data_nascimento']
-            ]);
-
-            $msg_login = "Aluno cadastrado com sucesso! Faça login para acessar o sistema.";
-            $msg_type = "success";
-            $tela_atual = "login";
-            $dados_formulario = [];
-        } catch (PDOException $e) {
-            $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
-            error_log("Erro ao cadastrar aluno: " . $e->getMessage());
-        }
-    }
-
-    if (!empty($erros)) {
-        $msg_cad_aluno = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
-        $msg_type = "error";
-    }
-}
-
-?>
-  <!-- CADASTRO FUNCIONÁRIO -->
-            <div id="cadastro_funcionario" class="section" style="display: <?= $tela_atual == 'cadastro_funcionario' ? 'block' : 'none' ?>;">
-                <?php if (!empty($msg_cad_func)) : ?>
-                    <div class="msg <?= $msg_type ?>"><?= $msg_cad_func ?></div>
-                <?php endif; ?>
-
-                <form method="POST">
-                    <input type="text" name="nome" placeholder="Nome Completo" value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
-
-                    <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)" maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
-
-                    <select name="tipo" required>
-                        <option value="">Selecione o Tipo</option>
-                        <option value="pedagógico" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'pedagógico') ? 'selected' : '' ?>>Pedagógico</option>
-                        <option value="instrutor" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'instrutor') ? 'selected' : '' ?>>Instrutor</option>
-                        <option value="portaria" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'portaria') ? 'selected' : '' ?>>Portaria</option>
-                    </select>
-
-                    <input type="password" name="senha" placeholder="Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-func')" required>
-                    <div id="requisitos-senha-func"></div>
-
-                    <button type="submit" name="cadastrar_funcionario">Cadastrar</button>
-                </form>
-
-            </div>
-
-<?php
-// CADASTRO FUNCIONÁRIO
-if (isset($_POST['cadastrar_funcionario'])) {
-    $tela_atual = "cadastro_funcionario";
-
-    $dados_formulario = [
-        'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
-        'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
-        'tipo' => isset($_POST['tipo']) ? LimpaPost($_POST['tipo']) : '',
-        'senha' => isset($_POST['senha']) ? $_POST['senha'] : ''
-    ];
-
-    $erros = [];
-    if (empty($dados_formulario['nome'])) {
-        $erros[] = "O campo Nome é obrigatório";
-    }
-
-    if (empty($dados_formulario['cpf'])) {
-        $erros[] = "O campo CPF é obrigatório";
-    }
-
-    if (empty($dados_formulario['tipo'])) {
-        $erros[] = "Selecione o tipo de funcionário";
-    }
-
-    if (empty($dados_formulario['senha'])) {
-        $erros[] = "O campo Senha é obrigatório";
-    }
-
-    $cpf_limpo = '';
-    if (!empty($dados_formulario['cpf'])) {
-        $cpf_limpo = limparCPF($dados_formulario['cpf']);
-
-        if (!validarCPF($cpf_limpo)) {
-            $erros[] = "CPF inválido! Verifique os números digitados";
-        } else {
-            if (cpfJaExiste($cpf_limpo)) {
-                $erros[] = "Este CPF já está cadastrado no sistema";
-            }
-        }
-    }
-
-    if (!empty($dados_formulario['senha'])) {
-        $errosSenha = validarSenhaForte($dados_formulario['senha']);
-        if (!empty($errosSenha)) {
-            $erros = array_merge($erros, $errosSenha);
-        }
-    }
-
-    if (empty($erros)) {
-        $cpf_formatado = formatarCPF($cpf_limpo);
-        $senha_hash = hashSenha($dados_formulario['senha']);
-
-        try {
-            $sql = "INSERT INTO funcionario (nome, cpf, tipo, senha_hash) VALUES (?, ?, ?, ?)";
-            $params = [
-                $dados_formulario['nome'],
-                $cpf_formatado,
-                $dados_formulario['tipo'],
-                $senha_hash
-            ];
-
-            $stmt = $conn->prepare($sql);
-            $resultado = $stmt->execute($params);
-
-            if ($resultado) {
-                $msg_login = "Funcionário cadastrado com sucesso! Faça login para acessar o sistema.";
-                $msg_type = "success";
-                $tela_atual = "login";
-                $dados_formulario = [];
-            } else {
-                $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
-            }
-        } catch (PDOException $e) {
-            $erros[] = "Erro ao cadastrar no banco de dados. Verifique os dados e tente novamente.";
-            error_log("Erro ao cadastrar funcionário: " . $e->getMessage());
-        }
-    }
-
-    if (!empty($erros)) {
-        $msg_cad_func = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
-        $msg_type = "error";
-    }
-}
-
-if (isset($_POST['logar'])) {
-    $tela_atual = "login";
-
-    $login_input = isset($_POST['login_input']) ? LimpaPost($_POST['login_input']) : '';
-    $senha = isset($_POST['senha']) ? $_POST['senha'] : '';
-
-    if (empty($login_input) || empty($senha)) {
-        $msg_login = "Preencha todos os campos para fazer login!";
-        $msg_type = "error";
-    } else {
-        $usuario_encontrado = false;
-        $cpf_limpo = limparCPF($login_input);
-        $cpf_formatado = formatarCPF($cpf_limpo);
-
-
-
-        try {
-            $stmt = $conn->prepare("SELECT * FROM aluno WHERE matricula = ? OR cpf = ? OR cpf = ? LIMIT 1");
-            $stmt->execute([$login_input, $cpf_formatado, $cpf_limpo]);
-            $aluno = $stmt->fetch();
-
-            if ($aluno) {
-                if (password_verify($senha, $aluno['senha_hash'])) {
-                    $_SESSION['id'] = $aluno['id_aluno'];
-                    $_SESSION['nome'] = $aluno['nome'];
-                    $_SESSION['tipo_user'] = 'aluno';
-                    header("Location: index.php");
-                    exit;
-                } else {
-                    $msg_login = "Senha incorreta! Verifique e tente novamente.";
-                    $msg_type = "error";
-                    $usuario_encontrado = true;
-                }
-            }
-        } catch (PDOException $e) {
-            error_log("Erro ao buscar aluno: " . $e->getMessage());
-        }
-
-        if (!$usuario_encontrado && $aluno === false) {
-            try {
-                $stmt = $conn->prepare("SELECT * FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
-                $stmt->execute([$cpf_formatado, $cpf_limpo]);
-
-                $func = $stmt->fetch();
-
-                if ($func) {
-                    if (password_verify($senha, $func['senha_hash'])) {
-                        $_SESSION['id'] = $func['id_funcionario'];
-                        $_SESSION['nome'] = $func['nome'];
-                        $_SESSION['tipo_user'] = $func['tipo'];
-                        header("Location: index.php");
-                        exit;
-                    } else {
-                        $msg_login = "Senha incorreta! Verifique e tente novamente.";
-                        $msg_type = "error";
-                        $usuario_encontrado = true;
-                    }
-                }
-            } catch (PDOException $e) {
-                error_log("Erro ao buscar funcionário: " . $e->getMessage());
-            }
-        }
-
-        if (!$usuario_encontrado && empty($msg_login)) {
-            $msg_login = "Usuário não encontrado. Verifique sua matrícula ou CPF.";
-            $msg_type = "error";
-        }
-    }
-}
-
-?>
         <!-- ALUNO -->
         <?php if ($tipo_user == 'aluno'): ?>
             <div id="info" class="section">
@@ -1375,268 +1152,371 @@ if (isset($_POST['logar'])) {
                 </div>
             </div>
 
-            <!-- SOLICITAÇÕES LIBERADAS -->
-            <div id="solicitacoes_liberadas" class="section" style="display:none;">
+            <!-- HISTÓRICO DE SOLICITAÇÕES (substitui liberadas + recusadas) -->
+            <div id="historico_solicitacoes" class="section" style="display:none;">
                 <div class="container">
-                    <h3>Solicitações Liberadas</h3>
-                    <?php
-                    $liberadas = $conn->query("
-                    SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
-                           a.contato_responsavel,
-                           " . (in_array('nome_responsavel', $columns) ? "a.nome_responsavel," : "") . "
-                           " . (in_array('empresa', $columns) ? "a.empresa," : "") . "
-                           " . (in_array('contato_empresa', $columns) ? "a.contato_empresa," : "") . "
-                           DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                           DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
-                    FROM solicitacao s
-                    JOIN aluno a ON s.id_aluno = a.id_aluno
-                    LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                    LEFT JOIN turma t ON m.id_turma = t.id_turma
-                    WHERE (s.status = 'liberado' OR s.status = 'concluido')
-                    ORDER BY s.data_solicitada DESC
-                ")->fetchAll();
+                    <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Histórico de Solicitações</h3>
 
-                    if (empty($liberadas)): ?>
-                        <p>Nenhuma solicitação liberada.</p>
-                    <?php else: ?>
-                        <?php foreach ($liberadas as $s):
-                            $parsed = parseMotivo($s['motivo']);
-                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                            $status_texto = getStatusText($s['status'], $s['motivo']);
-                        ?>
-                            <div class="solicitacao-card" style="border-left: 4px solid #28a745;">
-                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
-                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
-
-                                <?php
-                                $parsed_lib = parseMotivo($s['motivo']);
-                                if (!empty($parsed_lib['codigo'])):
-                                ?>
-                                    <p><strong>Código:</strong> <?php echo htmlspecialchars($parsed_lib['codigo']); ?></p>
-                                <?php endif; ?>
-
-                                <?php if (!empty($s['nome_responsavel']) || !empty($s['contato_responsavel'])): ?>
-                                    <p><strong>Responsável:</strong>
-                                        <?php echo htmlspecialchars($s['nome_responsavel'] ?? 'N/A'); ?>
-                                        <?php if (!empty($s['contato_responsavel'])): ?>
-                                            - <?php echo htmlspecialchars($s['contato_responsavel']); ?>
-                                        <?php endif; ?>
-                                    </p>
-                                <?php endif; ?>
-
-                                <?php if (!empty($s['empresa']) || !empty($s['contato_empresa'])): ?>
-                                    <p><strong>Empresa:</strong>
-                                        <?php echo htmlspecialchars($s['empresa'] ?? 'N/A'); ?>
-                                        <?php if (!empty($s['contato_empresa'])): ?>
-                                            - <?php echo htmlspecialchars($s['contato_empresa']); ?>
-                                        <?php endif; ?>
-                                    </p>
-                                <?php endif; ?>
-
-                                <?php if ($s['status'] == 'concluido' && !empty($s['data_saida_fmt'])): ?>
-                                    <p><strong>Saída Registrada:</strong> <?php echo $s['data_saida_fmt']; ?></p>
-                                <?php endif; ?>
-                                <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- SOLICITAÇÕES RECUSADAS -->
-            <div id="solicitacoes_recusadas" class="section" style="display:none;">
-                <div class="container">
-                    <h3>Solicitações Recusadas</h3>
-                    <?php
-                    $recusadas = $conn->query("
-                        SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
-                               DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
-                        FROM solicitacao s
-                        JOIN aluno a ON s.id_aluno = a.id_aluno
-                        LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                        LEFT JOIN turma t ON m.id_turma = t.id_turma
-                        WHERE s.status = 'rejeitada'
-                        ORDER BY s.data_solicitada DESC
-                    ")->fetchAll();
-
-                    if (empty($recusadas)): ?>
-                        <p>Nenhuma solicitação recusada.</p>
-                    <?php else: ?>
-                        <?php foreach ($recusadas as $s):
-                            $parsed = parseMotivo($s['motivo']);
-                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                            $status_texto = getStatusText($s['status'], $s['motivo']);
-                        ?>
-                            <div class="solicitacao-card" style="border-left: 4px solid #dc3545;">
-                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
-                                <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?></p>
-                                <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                                <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
-                                <p><strong>Status:</strong> <span style="color: #dc3545; font-weight: bold;"><?php echo $status_texto; ?></span></p>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <!-- VER ALUNOS LIBERADOS POR TURMA -->
-            <div id="alunos_liberados_turma" class="section" style="display:none;">
-                <div class="container">
-                    <h3>Ver Alunos Liberados (por turma)</h3>
-                    <label>Selecione a Turma:</label>
-                    <select id="select_turma_liberados" onchange="mostrarAlunosLiberados(this.value)">
-                        <option value="">Selecione uma turma</option>
-                        <?php foreach ($turmas as $t): ?>
-                            <option value="<?php echo $t['id_turma']; ?>"><?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="tabs-container">
+                        <button class="tab-btn active" onclick="mostrarHistoricoTab('liberadas')">Liberadas</button>
+                        <button class="tab-btn" onclick="mostrarHistoricoTab('recusadas')">Recusadas</button>
+                        <button class="tab-btn" onclick="mostrarHistoricoTab('todas')">Todas</button>
+                    </div>
 
                     <script>
-                        function mostrarAlunosLiberados(idTurma) {
-                            document.querySelectorAll('.lista-liberados-turma').forEach(el => el.style.display = 'none');
-                            if (idTurma) {
-                                const lista = document.getElementById('liberados-turma-' + idTurma);
-                                if (lista) lista.style.display = 'block';
-                            }
+                        function mostrarHistoricoTab(tipo) {
+                            // Remove active de todos os botões
+                            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                            event.target.classList.add('active');
+
+                            // Esconde todos os conteúdos
+                            document.querySelectorAll('.historico-content').forEach(el => el.classList.remove('active'));
+
+                            // Mostra o selecionado
+                            document.getElementById('historico-' + tipo).classList.add('active');
                         }
                     </script>
 
-                    <?php foreach ($turmas as $t): ?>
-                        <div id="liberados-turma-<?php echo $t['id_turma']; ?>" class="lista-liberados-turma" style="display:none; margin-top:20px;">
-                            <h4>Alunos Liberados - Turma: <?php echo htmlspecialchars($t['nome']); ?></h4>
-                            <?php
-                            $stmt_liberados = $conn->prepare("
-                                SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                       f.nome as instrutor_nome,
-                                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                                       DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as hora_instrutor,
-                                       DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as hora_saida
-                                FROM solicitacao s
-                                JOIN aluno a ON s.id_aluno = a.id_aluno
-                                JOIN matricula m ON a.id_aluno = m.id_aluno
-                                LEFT JOIN funcionario f ON s.id_autorizacao = f.id_funcionario
-                                WHERE m.id_turma = ? AND (s.status = 'liberado' OR s.status = 'concluido')
-                                ORDER BY s.data_solicitada DESC
-                            ");
-                            $stmt_liberados->execute([$t['id_turma']]);
-                            $alunos_liberados = $stmt_liberados->fetchAll();
+                    <!-- LIBERADAS -->
+                    <div id="historico-liberadas" class="historico-content active">
+                        <h4 style="text-align:center; margin-bottom:20px; color:#28a745;">Solicitações Liberadas</h4>
+                        <?php
+                        $columns = $conn->query("SHOW COLUMNS FROM aluno")->fetchAll(PDO::FETCH_COLUMN);
+                        $select_fields = "s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome, a.contato_responsavel";
 
-                            if (empty($alunos_liberados)): ?>
-                                <p>Nenhum aluno liberado nesta turma.</p>
-                            <?php else: ?>
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Nome do Aluno</th>
-                                            <th>Instrutor</th>
-                                            <th>Motivo</th>
-                                            <th>Hora Instrutor Liberou</th>
-                                            <th>Código</th>
-                                            <th>Hora Saída Portaria</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($alunos_liberados as $al):
-                                            $parsed = parseMotivo($al['motivo']);
-                                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                                            $status_texto = getStatusText($al['status'], $al['motivo']);
-                                        ?>
-                                            <tr>
-                                                <td><?php echo htmlspecialchars($al['aluno_nome']); ?></td>
-                                                <td><?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?></td>
-                                                <td><?php echo htmlspecialchars($motivo_texto); ?></td>
-                                                <td><?php echo $al['hora_instrutor'] ?? 'N/A'; ?></td>
-                                                <td><?php echo htmlspecialchars($parsed['codigo'] ?? 'N/A'); ?></td>
-                                                <td><?php echo $al['hora_saida'] ?? 'Aguardando'; ?></td>
-                                                <td><?php echo $status_texto; ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            <?php endif; ?>
-                        </div>
-                    <?php endforeach; ?>
+                        if (in_array('nome_responsavel', $columns)) {
+                            $select_fields .= ", a.nome_responsavel";
+                        }
+                        if (in_array('empresa', $columns)) {
+                            $select_fields .= ", a.empresa";
+                        }
+                        if (in_array('contato_empresa', $columns)) {
+                            $select_fields .= ", a.contato_empresa";
+                        }
+
+                        $liberadas = $conn->query("
+                           SELECT $select_fields,
+                                  DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                                  DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                           FROM solicitacao s
+                           JOIN aluno a ON s.id_aluno = a.id_aluno
+                           LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                           LEFT JOIN turma t ON m.id_turma = t.id_turma
+                           WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                           ORDER BY s.data_solicitada DESC
+                       ")->fetchAll();
+
+                        if (empty($liberadas)): ?>
+                            <p style="text-align:center;">Nenhuma solicitação liberada.</p>
+                            <?php else:
+                            $motivos_map = [
+                                '1' => 'Consulta médica',
+                                '2' => 'Consulta odontológica',
+                                '3' => 'Exames médicos',
+                                '4' => 'Problemas de saúde',
+                                '5' => 'Solicitação da empresa',
+                                '6' => 'Solicitação da família',
+                                '7' => 'Viagem particular',
+                                '8' => 'Viagem a trabalho',
+                                '9' => 'Treinamento a trabalho'
+                            ];
+
+                            foreach ($liberadas as $s):
+                                $parsed = parseMotivo($s['motivo']);
+                                $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                                    ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                                $status_texto = getStatusText($s['status'], $s['motivo']);
+                            ?>
+                                <div class="solicitacao-card" style="border-left: 4px solid #28a745;">
+                                    <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                    <div class="solicitacao-info">
+                                        <div class="info-item">
+                                            <strong>Turma:</strong>
+                                            <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?>
+                                        </div>
+                                        <div class="info-item">
+                                            <strong>Motivo:</strong>
+                                            <?php echo htmlspecialchars($motivo_texto); ?>
+                                        </div>
+                                        <div class="info-item">
+                                            <strong>Data Solicitação:</strong>
+                                            <?php echo $s['data_solicitada_fmt']; ?>
+                                        </div>
+                                        <?php if (!empty($parsed['codigo'])): ?>
+                                            <div class="info-item">
+                                                <strong>Código:</strong>
+                                                <?php echo htmlspecialchars($parsed['codigo']); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if ($s['status'] == 'concluido' && !empty($s['data_saida_fmt'])): ?>
+                                            <div class="info-item">
+                                                <strong>Saída Registrada:</strong>
+                                                <?php echo $s['data_saida_fmt']; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <p style="margin-top:10px;"><strong>Status:</strong>
+                                        <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span>
+                                    </p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- RECUSADAS -->
+                    <div id="historico-recusadas" class="historico-content">
+                        <h4 style="text-align:center; margin-bottom:20px; color:#dc3545;">Solicitações Recusadas</h4>
+                        <?php
+                        $recusadas = $conn->query("
+                SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                FROM solicitacao s
+                JOIN aluno a ON s.id_aluno = a.id_aluno
+                LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                LEFT JOIN turma t ON m.id_turma = t.id_turma
+                WHERE s.status = 'rejeitada'
+                ORDER BY s.data_solicitada DESC
+            ")->fetchAll();
+
+                        if (empty($recusadas)): ?>
+                            <p style="text-align:center;">Nenhuma solicitação recusada.</p>
+                            <?php else:
+                            foreach ($recusadas as $s):
+                                $parsed = parseMotivo($s['motivo']);
+                                $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                                    ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                                $status_texto = getStatusText($s['status'], $s['motivo']);
+                                $quem_recusou = 'N/A';
+                                if (strpos($s['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
+                                elseif (strpos($s['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
+                                elseif (strpos($s['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
+                            ?>
+                                <div class="solicitacao-card" style="border-left: 4px solid #dc3545;">
+                                    <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                    <div class="solicitacao-info">
+                                        <div class="info-item">
+                                            <strong>Turma:</strong>
+                                            <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?>
+                                        </div>
+                                        <div class="info-item">
+                                            <strong>Motivo:</strong>
+                                            <?php echo htmlspecialchars($motivo_texto); ?>
+                                        </div>
+                                        <div class="info-item">
+                                            <strong>Recusado por:</strong>
+                                            <?php echo $quem_recusou; ?>
+                                        </div>
+                                        <div class="info-item">
+                                            <strong>Data:</strong>
+                                            <?php echo $s['data_solicitada_fmt']; ?>
+                                        </div>
+                                    </div>
+                                    <p style="margin-top:10px;"><strong>Status:</strong>
+                                        <span style="color: #dc3545; font-weight: bold;"><?php echo $status_texto; ?></span>
+                                    </p>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- TODAS -->
+                    <div id="historico-todas" class="historico-content">
+                        <h4 style="text-align:center; margin-bottom:20px;">Todas as Solicitações</h4>
+                        <?php
+                        $todas = $conn->query("
+                SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                FROM solicitacao s
+                JOIN aluno a ON s.id_aluno = a.id_aluno
+                LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                LEFT JOIN turma t ON m.id_turma = t.id_turma
+                ORDER BY s.data_solicitada DESC
+                LIMIT 50
+            ")->fetchAll();
+
+                        foreach ($todas as $s):
+                            $parsed = parseMotivo($s['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                                ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                            $status_cor = getStatusColor($s['status'], $s['motivo']);
+                            $status_texto = getStatusText($s['status'], $s['motivo']);
+                        ?>
+                            <div class="solicitacao-card" style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                                <div class="solicitacao-info">
+                                    <div class="info-item">
+                                        <strong>Turma:</strong>
+                                        <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?>
+                                    </div>
+                                    <div class="info-item">
+                                        <strong>Motivo:</strong>
+                                        <?php echo htmlspecialchars($motivo_texto); ?>
+                                    </div>
+                                    <div class="info-item">
+                                        <strong>Data:</strong>
+                                        <?php echo $s['data_solicitada_fmt']; ?>
+                                    </div>
+                                    <div class="info-item">
+                                        <strong>Status:</strong>
+                                        <span style="color: <?php echo $status_cor; ?>; font-weight: bold;">
+                                            <?php echo $status_texto; ?>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
-
-            <!-- VER ALUNOS RECUSADOS POR TURMA -->
-            <div id="alunos_recusados_turma" class="section" style="display:none;">
+            <!-- HISTÓRICO POR ALUNO (substitui ver alunos liberados + recusados) -->
+            <div id="historico_alunos" class="section" style="display:none;">
                 <div class="container">
-                    <h3>Ver Alunos Recusados (por turma)</h3>
-                    <label>Selecione a Turma:</label>
-                    <select id="select_turma_recusados" onchange="mostrarAlunosRecusados(this.value)">
-                        <option value="">Selecione uma turma</option>
-                        <?php foreach ($turmas as $t): ?>
-                            <option value="<?php echo $t['id_turma']; ?>"><?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Histórico por Aluno/Turma</h3>
+
+                    <div class="filtros-container">
+                        <select id="filtro_turma_historico" onchange="filtrarHistoricoAlunos()">
+                            <option value="">Todas as Turmas</option>
+                            <?php foreach ($turmas as $t): ?>
+                                <option value="<?php echo $t['id_turma']; ?>">
+                                    <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+
+                        <select id="filtro_status_historico" onchange="filtrarHistoricoAlunos()">
+                            <option value="">Todos os Status</option>
+                            <option value="liberado,concluido">Liberados</option>
+                            <option value="rejeitada">Recusados</option>
+                        </select>
+                    </div>
 
                     <script>
-                        function mostrarAlunosRecusados(idTurma) {
-                            document.querySelectorAll('.lista-recusados-turma').forEach(el => el.style.display = 'none');
-                            if (idTurma) {
-                                const lista = document.getElementById('recusados-turma-' + idTurma);
-                                if (lista) lista.style.display = 'block';
-                            }
+                        function filtrarHistoricoAlunos() {
+                            const turmaId = document.getElementById('filtro_turma_historico').value;
+                            const status = document.getElementById('filtro_status_historico').value;
+                            const cards = document.querySelectorAll('.historico-aluno-card');
+
+                            cards.forEach(card => {
+                                const cardTurma = card.getAttribute('data-turma-id');
+                                const cardStatus = card.getAttribute('data-status');
+
+                                let mostrarTurma = (turmaId === "" || cardTurma === turmaId);
+                                let mostrarStatus = true;
+
+                                if (status !== "") {
+                                    const statusArray = status.split(',');
+                                    mostrarStatus = statusArray.includes(cardStatus);
+                                }
+
+                                card.style.display = (mostrarTurma && mostrarStatus) ? 'block' : 'none';
+                            });
                         }
                     </script>
 
-                    <?php foreach ($turmas as $t): ?>
-                        <div id="recusados-turma-<?php echo $t['id_turma']; ?>" class="lista-recusados-turma" style="display:none; margin-top:20px;">
-                            <h4>Alunos Recusados - Turma: <?php echo htmlspecialchars($t['nome']); ?></h4>
-                            <?php
-                            $stmt_recusados = $conn->prepare("
-                                SELECT s.*, a.nome as aluno_nome, a.matricula,
-                                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
-                                FROM solicitacao s
-                                JOIN aluno a ON s.id_aluno = a.id_aluno
-                                JOIN matricula m ON a.id_aluno = m.id_aluno
-                                WHERE m.id_turma = ? AND s.status = 'rejeitada'
-                                ORDER BY s.data_solicitada DESC
-                            ");
-                            $stmt_recusados->execute([$t['id_turma']]);
-                            $alunos_recusados = $stmt_recusados->fetchAll();
+                    <?php
+                    $historico_alunos = $conn->query("
+            SELECT s.*, a.nome as aluno_nome, a.matricula,
+                   t.id_turma, t.nome as turma_nome,
+                   f.nome as instrutor_nome,
+                   DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                   DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as hora_instrutor,
+                   DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as hora_saida
+            FROM solicitacao s
+            JOIN aluno a ON s.id_aluno = a.id_aluno
+            LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+            LEFT JOIN turma t ON m.id_turma = t.id_turma
+            LEFT JOIN funcionario f ON s.id_autorizacao = f.id_funcionario
+            WHERE s.status IN ('liberado', 'concluido', 'rejeitada')
+            ORDER BY s.data_solicitada DESC
+        ")->fetchAll();
 
-                            if (empty($alunos_recusados)): ?>
-                                <p>Nenhum aluno recusado nesta turma.</p>
-                            <?php else: ?>
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Nome</th>
-                                            <th>Motivo</th>
-                                            <th>Quem Recusou</th>
-                                            <th>Hora da Recusa</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($alunos_recusados as $ar):
-                                            $parsed = parseMotivo($ar['motivo']);
-                                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                                            $quem_recusou = 'N/A';
-                                            if (strpos($ar['motivo'], 'recusado_instrutor') !== false) {
-                                                $quem_recusou = 'Instrutor';
-                                            } elseif (strpos($ar['motivo'], 'recusado_pedagogico') !== false) {
-                                                $quem_recusou = 'Pedagógico';
-                                            } elseif (strpos($ar['motivo'], 'recusado_responsavel') !== false) {
-                                                $quem_recusou = 'Responsável';
-                                            }
-                                        ?>
-                                            <tr>
-                                                <td><?php echo htmlspecialchars($ar['aluno_nome']); ?></td>
-                                                <td><?php echo htmlspecialchars($motivo_texto); ?></td>
-                                                <td><?php echo $quem_recusou; ?></td>
-                                                <td><?php echo $ar['data_solicitada_fmt']; ?></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            <?php endif; ?>
-                        </div>
-                    <?php endforeach; ?>
+                    if (empty($historico_alunos)): ?>
+                        <p style="text-align:center;">Nenhum registro encontrado.</p>
+                        <?php else:
+                        $motivos_map = [
+                            '1' => 'Consulta médica',
+                            '2' => 'Consulta odontológica',
+                            '3' => 'Exames médicos',
+                            '4' => 'Problemas de saúde',
+                            '5' => 'Solicitação da empresa',
+                            '6' => 'Solicitação da família',
+                            '7' => 'Viagem particular',
+                            '8' => 'Viagem a trabalho',
+                            '9' => 'Treinamento a trabalho'
+                        ];
+
+                        foreach ($historico_alunos as $al):
+                            $parsed = parseMotivo($al['motivo']);
+                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                                ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                            $status_texto = getStatusText($al['status'], $al['motivo']);
+                            $status_cor = getStatusColor($al['status'], $al['motivo']);
+
+                            $quem_recusou = '';
+                            if ($al['status'] == 'rejeitada') {
+                                if (strpos($al['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
+                                elseif (strpos($al['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
+                                elseif (strpos($al['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
+                            }
+                        ?>
+                            <div class="solicitacao-card historico-aluno-card"
+                                data-turma-id="<?php echo $al['id_turma']; ?>"
+                                data-status="<?php echo $al['status']; ?>"
+                                style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                                <div class="solicitacao-header">
+                                    <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                                    <span class="status-badge" style="background: <?php echo $status_cor; ?>;">
+                                        <?php echo $status_texto; ?>
+                                    </span>
+                                </div>
+
+                                <div class="solicitacao-info">
+                                    <div class="info-item">
+                                        <strong>Turma:</strong>
+                                        <?php echo htmlspecialchars($al['turma_nome'] ?? 'N/A'); ?>
+                                    </div>
+                                    <div class="info-item">
+                                        <strong>Motivo:</strong>
+                                        <?php echo htmlspecialchars($motivo_texto); ?>
+                                    </div>
+                                    <div class="info-item">
+                                        <strong>Data Solicitação:</strong>
+                                        <?php echo $al['data_solicitada_fmt']; ?>
+                                    </div>
+
+                                    <?php if ($al['status'] != 'rejeitada'): ?>
+                                        <div class="info-item">
+                                            <strong>Instrutor:</strong>
+                                            <?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?>
+                                        </div>
+                                        <?php if (!empty($al['hora_instrutor'])): ?>
+                                            <div class="info-item">
+                                                <strong>Liberado em:</strong>
+                                                <?php echo $al['hora_instrutor']; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($parsed['codigo'])): ?>
+                                            <div class="info-item">
+                                                <strong>Código:</strong>
+                                                <?php echo htmlspecialchars($parsed['codigo']); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if ($al['status'] == 'concluido' && !empty($al['hora_saida'])): ?>
+                                            <div class="info-item">
+                                                <strong>Saída Portaria:</strong>
+                                                <?php echo $al['hora_saida']; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <div class="info-item">
+                                            <strong>Recusado por:</strong>
+                                            <?php echo $quem_recusou; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -1794,119 +1674,538 @@ if (isset($_POST['logar'])) {
                 </table>
             </div>
     </div>
+<?php endif; ?>
 
-    <div id="alunos" class="section" style="display:none;">
-        <div class="container">
-            <h3>Gerenciar Alunos</h3>
-            <h4>Alunos com Cadastro Incompleto</h4>
-            <?php if (empty($alunos_incompletos)): ?>
-                <p>Todos os alunos têm cadastro completo.</p>
-            <?php else: ?>
+<!-- GERENCIAR ALUNOS -->
+<div id="gerenciar_alunos" class="section" style="display:none;">
+    <div class="container">
+        <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Gerenciar Alunos</h3>
+
+        <!-- Formulário de Cadastro -->
+        <div class="form-cadastro-centralizado">
+            <h4 style="text-align:center; margin-bottom:20px;">Cadastrar Novo Aluno</h4>
+
+            <?php if (!empty($msg_cad_aluno)) : ?>
+                <div class="msg <?= $msg_type ?>"><?= $msg_cad_aluno ?></div>
+            <?php endif; ?>
+
+            <form method="POST">
+                <div class="form-row">
+                    <input type="text" name="nome" placeholder="Nome Completo"
+                        value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
+
+                    <input type="text" name="matricula" placeholder="Matrícula"
+                        value="<?= isset($dados_formulario['matricula']) ? htmlspecialchars($dados_formulario['matricula']) : '' ?>" required>
+                </div>
+
+                <div class="form-row">
+                    <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)"
+                        maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
+
+                    <input type="date" name="data_nascimento" placeholder="Data de Nascimento"
+                        value="<?= isset($dados_formulario['data_nascimento']) ? htmlspecialchars($dados_formulario['data_nascimento']) : '' ?>" required>
+                </div>
+
+                <label style="font-size:0.9em; color:#666; margin-top:10px;">Curso e Turma:</label>
+                <div class="form-row">
+                    <select name="id_curso" id="curso_aluno" required onchange="carregarTurmasPorCurso(this.value)">
+                        <option value="">Selecione o Curso</option>
+                        <?php foreach ($cursos as $c): ?>
+                            <option value="<?php echo $c['id_curso']; ?>"
+                                <?= (isset($dados_formulario['id_curso']) && $dados_formulario['id_curso'] == $c['id_curso']) ? 'selected' : '' ?>>
+                                <?php echo htmlspecialchars($c['nome']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <select name="id_turma" id="turma_aluno" required>
+                        <option value="">Primeiro selecione o curso</option>
+                    </select>
+                </div>
+
+                <label style="font-size:0.9em; color:#666; margin-top:10px;">Dados do Responsável:</label>
+                <div class="form-row">
+                    <input type="text" name="nome_responsavel" placeholder="Nome do Responsável"
+                        value="<?= isset($dados_formulario['nome_responsavel']) ? htmlspecialchars($dados_formulario['nome_responsavel']) : '' ?>">
+
+                    <input type="text" name="contato_responsavel" placeholder="Telefone do Responsável"
+                        value="<?= isset($dados_formulario['contato_responsavel']) ? htmlspecialchars($dados_formulario['contato_responsavel']) : '' ?>">
+                </div>
+
+                <label style="font-size:0.9em; color:#666; margin-top:10px;">Dados da Empresa:</label>
+                <div class="form-row">
+                    <input type="text" name="empresa" placeholder="Nome da Empresa"
+                        value="<?= isset($dados_formulario['empresa']) ? htmlspecialchars($dados_formulario['empresa']) : '' ?>">
+
+                    <input type="text" name="contato_empresa" placeholder="Telefone da Empresa"
+                        value="<?= isset($dados_formulario['contato_empresa']) ? htmlspecialchars($dados_formulario['contato_empresa']) : '' ?>">
+                </div>
+
+                <input type="password" name="senha" placeholder="Senha"
+                    onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-aluno')" required>
+                <div id="requisitos-senha-aluno"></div>
+
+                <button type="submit" name="cadastrar_aluno">Cadastrar Aluno</button>
+            </form>
+        </div>
+
+        <!-- Lista de Alunos Incompletos -->
+        <?php if (!empty($alunos_incompletos)): ?>
+            <div style="margin-top:40px;">
+                <h4 style="text-align:center; margin-bottom:20px; color:#dc3545;">Alunos com Dados Incompletos</h4>
                 <div class="alunos-incompletos-grid">
                     <?php foreach ($alunos_incompletos as $aluno): ?>
                         <div class="aluno-card-incompleto">
-                            <div style="text-align:center; margin-bottom:15px;">
-                                <img src="img/senai logo.png" alt="Foto do Aluno" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid #007bff;">
-                            </div>
-                            <h5 style="text-align:center; margin-bottom:10px;"><?php echo htmlspecialchars($aluno['nome']); ?></h5>
+                            <h5 style="margin-bottom:15px;"><?php echo htmlspecialchars($aluno['nome']); ?></h5>
                             <p><strong>Matrícula:</strong> <?php echo htmlspecialchars($aluno['matricula']); ?></p>
-                            <p><strong>Turma:</strong> <?php echo htmlspecialchars($aluno['turma_nome'] ?? 'Não matriculado'); ?></p>
-
-                            <div style="background:#fff3cd; padding:10px; margin:10px 0; border-radius:5px; border-left:4px solid #ffc107;">
-                                <strong>Campos Pendentes:</strong>
-                                <ul style="margin:5px 0; padding-left:20px;">
-                                    <?php if (empty($aluno['contato_responsavel'])): ?>
-                                        <li>Telefone do Responsável</li>
-                                    <?php endif; ?>
-                                    <?php if (empty($aluno['turma_nome'])): ?>
-                                        <li>Turma</li>
-                                    <?php endif; ?>
-                                </ul>
-                            </div>
 
                             <form method="POST" style="margin-top:15px;">
                                 <input type="hidden" name="id_aluno" value="<?php echo $aluno['id_aluno']; ?>">
+
                                 <label>Nome do Responsável:</label>
-                                <input type="text" name="nome_responsavel" value="<?php echo htmlspecialchars($aluno['nome_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Nome do Responsável" <?php echo !empty($aluno['nome_responsavel']) ? 'readonly style="background:#f0f0f0;"' : ''; ?>>
+                                <input type="text" name="nome_responsavel"
+                                    value="<?php echo htmlspecialchars($aluno['nome_responsavel'] ?? ''); ?>"
+                                    placeholder="Digite Nome do Responsável">
 
                                 <label>Telefone do Responsável:</label>
-                                <input type="text" name="contato_responsavel" value="<?php echo htmlspecialchars($aluno['contato_responsavel'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Telefone do Responsável" <?php echo !empty($aluno['contato_responsavel']) ? 'readonly style="background:#f0f0f0;"' : 'required'; ?>>
+                                <input type="text" name="contato_responsavel"
+                                    value="<?php echo htmlspecialchars($aluno['contato_responsavel'] ?? ''); ?>"
+                                    placeholder="Digite Telefone" required>
 
-                                <label>Nome da Empresa:</label>
-                                <input type="text" name="empresa" value="<?php echo htmlspecialchars($aluno['empresa'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Nome da Empresa" <?php echo !empty($aluno['empresa']) ? 'readonly style="background:#f0f0f0;"' : ''; ?>>
+                                <label>Empresa:</label>
+                                <input type="text" name="empresa"
+                                    value="<?php echo htmlspecialchars($aluno['empresa'] ?? ''); ?>"
+                                    placeholder="Nome da Empresa">
 
                                 <label>Telefone da Empresa:</label>
-                                <input type="text" name="contato_empresa" value="<?php echo htmlspecialchars($aluno['contato_empresa'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Digite Telefone da Empresa" <?php echo !empty($aluno['contato_empresa']) ? 'readonly style="background:#f0f0f0;"' : ''; ?>>
+                                <input type="text" name="contato_empresa"
+                                    value="<?php echo htmlspecialchars($aluno['contato_empresa'] ?? ''); ?>"
+                                    placeholder="Telefone da Empresa">
 
                                 <label>Turma:</label>
-                                <select name="id_turma" <?php echo !empty($aluno['turma_nome']) ? 'disabled style="background:#f0f0f0;"' : 'required'; ?>>
+                                <select name="id_turma" required>
                                     <option value="">Selecione a turma</option>
                                     <?php foreach ($turmas as $t): ?>
-                                        <option value="<?php echo $t['id_turma']; ?>" <?php echo ($aluno['turma_nome'] == $t['nome']) ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?>
+                                        <option value="<?php echo $t['id_turma']; ?>">
+                                            <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
 
-                                <div style="display:flex; gap:10px; margin-top:10px;">
-                                    <button type="submit" name="completar_aluno" style="flex:1; background:#28a745;">Salvar Dados</button>
-                                    <input type="hidden" name="id_aluno_reset" value="<?php echo $aluno['id_aluno']; ?>">
-                                    <button type="submit" name="resetar_senha_aluno" formnovalidate style="flex:1; background:#ffc107; color:#000;">Resetar Senha</button>
-                                </div>
+                                <button type="submit" name="completar_aluno">Completar Cadastro</button>
+                            </form>
+
+                            <form method="POST" style="margin-top:10px;">
+                                <input type="hidden" name="id_aluno_reset" value="<?php echo $aluno['id_aluno']; ?>">
+                                <button type="submit" name="resetar_senha_aluno"
+                                    style="background:#6c757d;">Resetar Senha</button>
                             </form>
                         </div>
                     <?php endforeach; ?>
                 </div>
-            <?php endif; ?>
+            </div>
+        <?php endif; ?>
 
-            <h4 style="margin-top:40px;">Listar Matrículas por Turma</h4>
-            <select onchange="carregarMatriculas(this.value)" style="margin-bottom:20px;">
+        <!-- Lista de Alunos por Turma -->
+        <div style="margin-top:50px;">
+            <h4 style="text-align:center; margin-bottom:20px;">Listar Alunos por Turma</h4>
+            <select onchange="carregarMatriculas(this.value)" style="max-width:400px; margin:0 auto 20px; display:block;">
                 <option value="">Selecione uma turma</option>
                 <?php foreach ($turmas as $t): ?>
-                    <option value="<?php echo $t['id_turma']; ?>"><?php echo htmlspecialchars($t['nome']); ?> - <?php echo htmlspecialchars($t['curso_nome']); ?></option>
+                    <option value="<?php echo $t['id_turma']; ?>">
+                        <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
-            <div id="matriculas_turma">
-                <?php foreach ($turmas as $t): ?>
-                    <div id="alunos-turma-<?php echo $t['id_turma']; ?>" class="lista-alunos-turma" style="display:none;">
-                        <h5>Alunos da Turma: <?php echo htmlspecialchars($t['nome']); ?></h5>
-                        <?php
-                        $stmt_alunos = $conn->prepare("SELECT a.nome, a.matricula, a.celular FROM aluno a JOIN matricula m ON a.id_aluno = m.id_aluno WHERE m.id_turma = ? ORDER BY a.nome");
-                        $stmt_alunos->execute([$t['id_turma']]);
-                        $alunos_turma = $stmt_alunos->fetchAll();
 
-                        if (empty($alunos_turma)): ?>
-                            <p>Nenhum aluno matriculado nesta turma.</p>
-                        <?php else: ?>
-                            <table>
-                                <thead>
+            <?php foreach ($turmas as $t): ?>
+                <div id="alunos-turma-<?php echo $t['id_turma']; ?>" class="lista-alunos-turma" style="display:none;">
+                    <h5 style="text-align:center; margin-bottom:15px;">Alunos: <?php echo htmlspecialchars($t['nome']); ?></h5>
+                    <?php
+                    $stmt_alunos = $conn->prepare("SELECT a.nome, a.matricula, a.celular FROM aluno a JOIN matricula m ON a.id_aluno = m.id_aluno WHERE m.id_turma = ? ORDER BY a.nome");
+                    $stmt_alunos->execute([$t['id_turma']]);
+                    $alunos_turma = $stmt_alunos->fetchAll();
+
+                    if (empty($alunos_turma)): ?>
+                        <p style="text-align:center;">Nenhum aluno matriculado.</p>
+                    <?php else: ?>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Matrícula</th>
+                                    <th>Celular</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($alunos_turma as $aluno): ?>
                                     <tr>
-                                        <th>Nome</th>
-                                        <th>Matrícula</th>
-                                        <th>Celular</th>
+                                        <td><?php echo htmlspecialchars($aluno['nome']); ?></td>
+                                        <td><?php echo htmlspecialchars($aluno['matricula']); ?></td>
+                                        <td><?php echo htmlspecialchars($aluno['celular']); ?></td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($alunos_turma as $aluno): ?>
-                                        <tr>
-                                            <td><?php echo htmlspecialchars($aluno['nome']); ?></td>
-                                            <td><?php echo htmlspecialchars($aluno['matricula']); ?></td>
-                                            <td><?php echo htmlspecialchars($aluno['celular']); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        <?php endif; ?>
-                    </div>
-                <?php endforeach; ?>
-            </div>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
         </div>
     </div>
-<?php endif; ?>
+</div>
+
+<!--CADASTRO ALUNO -->
+<?php
+if (isset($_POST['cadastrar_aluno'])) {
+    $tela_atual = "cadastro_aluno";
+
+    $dados_formulario = [
+        'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
+        'matricula' => isset($_POST['matricula']) ? LimpaPost($_POST['matricula']) : '',
+        'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
+        'senha' => isset($_POST['senha']) ? $_POST['senha'] : '',
+        'data_nascimento' => isset($_POST['data_nascimento']) ? $_POST['data_nascimento'] : '',
+        'id_curso' => isset($_POST['id_curso']) ? $_POST['id_curso'] : '',
+        'id_turma' => isset($_POST['id_turma']) ? $_POST['id_turma'] : '',
+        'nome_responsavel' => isset($_POST['nome_responsavel']) ? LimpaPost($_POST['nome_responsavel']) : '',
+        'contato_responsavel' => isset($_POST['contato_responsavel']) ? LimpaPost($_POST['contato_responsavel']) : '',
+        'empresa' => isset($_POST['empresa']) ? LimpaPost($_POST['empresa']) : '',
+        'contato_empresa' => isset($_POST['contato_empresa']) ? LimpaPost($_POST['contato_empresa']) : ''
+    ];
+
+    $erros = [];
+
+    if (empty($dados_formulario['nome'])) {
+        $erros[] = "O campo Nome é obrigatório";
+    }
+
+    if (empty($dados_formulario['matricula'])) {
+        $erros[] = "O campo Matrícula é obrigatório";
+    }
+
+    if (empty($dados_formulario['cpf'])) {
+        $erros[] = "O campo CPF é obrigatório";
+    }
+
+    if (empty($dados_formulario['senha'])) {
+        $erros[] = "O campo Senha é obrigatório";
+    }
+
+    if (empty($dados_formulario['data_nascimento'])) {
+        $erros[] = "O campo Data de Nascimento é obrigatório";
+    }
+
+    if (empty($dados_formulario['id_curso'])) {
+        $erros[] = "Selecione o curso";
+    }
+
+    if (empty($dados_formulario['id_turma'])) {
+        $erros[] = "Selecione a turma";
+    }
+
+    if (!empty($dados_formulario['cpf'])) {
+        $cpf_limpo = limparCPF($dados_formulario['cpf']);
+
+        if (!validarCPF($cpf_limpo)) {
+            $erros[] = "CPF inválido! Verifique os números digitados";
+        } else {
+            if (cpfJaExiste($cpf_limpo)) {
+                $erros[] = "Este CPF já está cadastrado no sistema";
+            }
+        }
+    }
+
+    if (!empty($dados_formulario['senha'])) {
+        $errosSenha = validarSenhaForte($dados_formulario['senha']);
+        if (!empty($errosSenha)) {
+            $erros = array_merge($erros, $errosSenha);
+        }
+    }
+
+    if (!empty($dados_formulario['matricula'])) {
+        if (matriculaJaExiste($dados_formulario['matricula'], null, 'aluno')) {
+            $erros[] = "Esta matrícula já está cadastrada no sistema";
+        }
+    }
+
+    if (!empty($dados_formulario['data_nascimento'])) {
+        if (!validarData($dados_formulario['data_nascimento'])) {
+            $erros[] = "Data de nascimento inválida";
+        } else {
+            $idade = calcularIdade($dados_formulario['data_nascimento']);
+            if ($idade < 14) {
+                $erros[] = "É necessário ter pelo menos 14 anos para se cadastrar";
+            }
+        }
+    }
+
+    if (empty($erros)) {
+        $celular = '00000000000';
+        $cpf_formatado = formatarCPF($cpf_limpo);
+        $senha_hash = hashSenha($dados_formulario['senha']);
+
+        try {
+            // Verificar colunas disponíveis
+            $columns = $conn->query("SHOW COLUMNS FROM aluno")->fetchAll(PDO::FETCH_COLUMN);
+
+            $sql_fields = ['nome', 'matricula', 'cpf', 'celular', 'senha_hash', 'data_nascimento'];
+            $sql_values = ['?', '?', '?', '?', '?', '?'];
+            $params = [
+                $dados_formulario['nome'],
+                $dados_formulario['matricula'],
+                $cpf_formatado,
+                $celular,
+                $senha_hash,
+                $dados_formulario['data_nascimento']
+            ];
+
+            // Adicionar campos opcionais se existirem na tabela
+            if (in_array('nome_responsavel', $columns) && !empty($dados_formulario['nome_responsavel'])) {
+                $sql_fields[] = 'nome_responsavel';
+                $sql_values[] = '?';
+                $params[] = $dados_formulario['nome_responsavel'];
+            }
+
+            if (in_array('contato_responsavel', $columns) && !empty($dados_formulario['contato_responsavel'])) {
+                $sql_fields[] = 'contato_responsavel';
+                $sql_values[] = '?';
+                $params[] = $dados_formulario['contato_responsavel'];
+            }
+
+            if (in_array('empresa', $columns) && !empty($dados_formulario['empresa'])) {
+                $sql_fields[] = 'empresa';
+                $sql_values[] = '?';
+                $params[] = $dados_formulario['empresa'];
+            }
+
+            if (in_array('contato_empresa', $columns) && !empty($dados_formulario['contato_empresa'])) {
+                $sql_fields[] = 'contato_empresa';
+                $sql_values[] = '?';
+                $params[] = $dados_formulario['contato_empresa'];
+            }
+
+            $sql = "INSERT INTO aluno (" . implode(', ', $sql_fields) . ") VALUES (" . implode(', ', $sql_values) . ")";
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+
+            $id_aluno = $conn->lastInsertId();
+
+            // Criar matrícula na turma
+            if (!empty($dados_formulario['id_turma'])) {
+                $stmt_matricula = $conn->prepare("INSERT INTO matricula (id_aluno, id_turma) VALUES (?, ?)");
+                $stmt_matricula->execute([$id_aluno, $dados_formulario['id_turma']]);
+            }
+
+            $msg_cad_aluno = "Aluno cadastrado com sucesso!";
+            $msg_type = "success";
+            $dados_formulario = [];
+
+            // Recarregar lista de alunos incompletos
+            $alunos_incompletos = $conn->query("SELECT a.*, t.nome as turma_nome FROM aluno a LEFT JOIN matricula m ON a.id_aluno = m.id_aluno LEFT JOIN turma t ON m.id_turma = t.id_turma WHERE a.contato_responsavel IS NULL OR a.contato_responsavel = '' ORDER BY a.nome")->fetchAll();
+        } catch (PDOException $e) {
+            $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
+            error_log("Erro ao cadastrar aluno: " . $e->getMessage());
+        }
+    }
+
+    if (!empty($erros)) {
+        $msg_cad_aluno = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
+        $msg_type = "error";
+    }
+}
+?>
+
+<!-- GERENCIAR FUNCIONÁRIOS -->
+<div id="gerenciar_funcionarios" class="section" style="display:none;">
+    <div class="container">
+        <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Gerenciar Funcionários</h3>
+
+        <div class="form-cadastro-centralizado">
+            <h4 style="text-align:center; margin-bottom:20px;">Cadastrar Novo Funcionário</h4>
+
+            <?php if (!empty($msg_cad_func)) : ?>
+                <div class="msg <?= $msg_type ?>"><?= $msg_cad_func ?></div>
+            <?php endif; ?>
+
+            <form method="POST">
+                <input type="text" name="nome" placeholder="Nome Completo"
+                    value="<?= isset($dados_formulario['nome']) ? htmlspecialchars($dados_formulario['nome']) : '' ?>" required>
+
+                <input type="text" name="cpf" placeholder="CPF" onkeyup="formatarCPFInput(this)"
+                    maxlength="14" value="<?= isset($dados_formulario['cpf']) ? htmlspecialchars($dados_formulario['cpf']) : '' ?>" required>
+
+                <select name="tipo" required>
+                    <option value="">Selecione o Tipo</option>
+                    <option value="pedagógico" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'pedagógico') ? 'selected' : '' ?>>Pedagógico</option>
+                    <option value="instrutor" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'instrutor') ? 'selected' : '' ?>>Instrutor</option>
+                    <option value="portaria" <?= (isset($dados_formulario['tipo']) && $dados_formulario['tipo'] == 'portaria') ? 'selected' : '' ?>>Portaria</option>
+                </select>
+
+                <input type="password" name="senha" placeholder="Senha"
+                    onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-func')" required>
+                <div id="requisitos-senha-func"></div>
+
+                <button type="submit" name="cadastrar_funcionario">Cadastrar Funcionário</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php
+// CADASTRO FUNCIONÁRIO
+if (isset($_POST['cadastrar_funcionario'])) {
+    $tela_atual = "cadastro_funcionario";
+
+    $dados_formulario = [
+        'nome' => isset($_POST['nome']) ? LimpaPost($_POST['nome']) : '',
+        'cpf' => isset($_POST['cpf']) ? $_POST['cpf'] : '',
+        'tipo' => isset($_POST['tipo']) ? LimpaPost($_POST['tipo']) : '',
+        'senha' => isset($_POST['senha']) ? $_POST['senha'] : ''
+    ];
+
+    $erros = [];
+    if (empty($dados_formulario['nome'])) {
+        $erros[] = "O campo Nome é obrigatório";
+    }
+
+    if (empty($dados_formulario['cpf'])) {
+        $erros[] = "O campo CPF é obrigatório";
+    }
+
+    if (empty($dados_formulario['tipo'])) {
+        $erros[] = "Selecione o tipo de funcionário";
+    }
+
+    if (empty($dados_formulario['senha'])) {
+        $erros[] = "O campo Senha é obrigatório";
+    }
+
+    $cpf_limpo = '';
+    if (!empty($dados_formulario['cpf'])) {
+        $cpf_limpo = limparCPF($dados_formulario['cpf']);
+
+        if (!validarCPF($cpf_limpo)) {
+            $erros[] = "CPF inválido! Verifique os números digitados";
+        } else {
+            if (cpfJaExiste($cpf_limpo)) {
+                $erros[] = "Este CPF já está cadastrado no sistema";
+            }
+        }
+    }
+
+    if (!empty($dados_formulario['senha'])) {
+        $errosSenha = validarSenhaForte($dados_formulario['senha']);
+        if (!empty($errosSenha)) {
+            $erros = array_merge($erros, $errosSenha);
+        }
+    }
+
+    if (empty($erros)) {
+        $cpf_formatado = formatarCPF($cpf_limpo);
+        $senha_hash = hashSenha($dados_formulario['senha']);
+
+        try {
+            $sql = "INSERT INTO funcionario (nome, cpf, tipo, senha_hash) VALUES (?, ?, ?, ?)";
+            $params = [
+                $dados_formulario['nome'],
+                $cpf_formatado,
+                $dados_formulario['tipo'],
+                $senha_hash
+            ];
+
+            $stmt = $conn->prepare($sql);
+            $resultado = $stmt->execute($params);
+
+            if ($resultado) {
+                $msg_login = "Funcionário cadastrado com sucesso! Faça login para acessar o sistema.";
+                $msg_type = "success";
+                $tela_atual = "login";
+                $dados_formulario = [];
+            } else {
+                $erros[] = "Erro ao cadastrar no banco de dados. Tente novamente.";
+            }
+        } catch (PDOException $e) {
+            $erros[] = "Erro ao cadastrar no banco de dados. Verifique os dados e tente novamente.";
+            error_log("Erro ao cadastrar funcionário: " . $e->getMessage());
+        }
+    }
+
+    if (!empty($erros)) {
+        $msg_cad_func = "<strong>Corrija os seguintes erros:</strong><br>• " . implode("<br>• ", $erros);
+        $msg_type = "error";
+    }
+}
+
+if (isset($_POST['logar'])) {
+    $tela_atual = "login";
+
+    $login_input = isset($_POST['login_input']) ? LimpaPost($_POST['login_input']) : '';
+    $senha = isset($_POST['senha']) ? $_POST['senha'] : '';
+
+    if (empty($login_input) || empty($senha)) {
+        $msg_login = "Preencha todos os campos para fazer login!";
+        $msg_type = "error";
+    } else {
+        $usuario_encontrado = false;
+        $cpf_limpo = limparCPF($login_input);
+        $cpf_formatado = formatarCPF($cpf_limpo);
+
+
+
+        try {
+            $stmt = $conn->prepare("SELECT * FROM aluno WHERE matricula = ? OR cpf = ? OR cpf = ? LIMIT 1");
+            $stmt->execute([$login_input, $cpf_formatado, $cpf_limpo]);
+            $aluno = $stmt->fetch();
+
+            if ($aluno) {
+                if (password_verify($senha, $aluno['senha_hash'])) {
+                    $_SESSION['id'] = $aluno['id_aluno'];
+                    $_SESSION['nome'] = $aluno['nome'];
+                    $_SESSION['tipo_user'] = 'aluno';
+                    header("Location: index.php");
+                    exit;
+                } else {
+                    $msg_login = "Senha incorreta! Verifique e tente novamente.";
+                    $msg_type = "error";
+                    $usuario_encontrado = true;
+                }
+            }
+        } catch (PDOException $e) {
+            error_log("Erro ao buscar aluno: " . $e->getMessage());
+        }
+
+        if (!$usuario_encontrado && $aluno === false) {
+            try {
+                $stmt = $conn->prepare("SELECT * FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
+                $stmt->execute([$cpf_formatado, $cpf_limpo]);
+
+                $func = $stmt->fetch();
+
+                if ($func) {
+                    if (password_verify($senha, $func['senha_hash'])) {
+                        $_SESSION['id'] = $func['id_funcionario'];
+                        $_SESSION['nome'] = $func['nome'];
+                        $_SESSION['tipo_user'] = $func['tipo'];
+                        header("Location: index.php");
+                        exit;
+                    } else {
+                        $msg_login = "Senha incorreta! Verifique e tente novamente.";
+                        $msg_type = "error";
+                        $usuario_encontrado = true;
+                    }
+                }
+            } catch (PDOException $e) {
+                error_log("Erro ao buscar funcionário: " . $e->getMessage());
+            }
+        }
+
+        if (!$usuario_encontrado && empty($msg_login)) {
+            $msg_login = "Usuário não encontrado. Verifique sua matrícula ou CPF.";
+            $msg_type = "error";
+        }
+    }
+}
+?>
 
 <!-- INSTRUTOR -->
 <?php if ($tipo_user == 'instrutor'): ?>
