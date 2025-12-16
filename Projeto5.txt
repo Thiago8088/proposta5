@@ -231,3 +231,152 @@ Remover códigos que não são usados.
 Remover duplicidades.
 
 Melhorar segurança e organização do backend.
+
+
+
+
+
+
+
+
+
+
+
+
+
+na parte para ver a frequencia colocar um select para o aluno selecionar a unidade curricular, e deixa so verde,vermelha e amarelho a parte da porcentagem e a barra o resto segue a mesma coisa que os outros card,na parte do pedagogico na solicitações ex."Turma: PFUS-01
+
+Motivo: Consulta médica
+
+Data Solicitação: 16/12/2025 16:06
+
+Status: Aguardando Pedagógico" coloca um a mais que vai ser o telefone do resposavel do aluno e da empresa, e vai coloca o instrutor que liberou ele a sair da sala,aguradando resposavel, vai separar se o aluno e maior de idade ou menor de idade se ele for maior de idade vai ter no lugar do botao resposavel aceitou vao colocar o aluno e maior de idade e deseja ir embora,se for menor de idade continua a mesma coisa unica diferença que aqui ex"Turma: PFUS-01
+
+Motivo: Consulta médica
+
+Data Solicitação: 16/12/2025 16:11" vai colcoar coloca um a mais que vai ser o telefone do resposavel do aluno e da empresa, e vai coloca o instrutor que liberou ele a sair da sala, aguardando Portaria ex."Responsável: N/A - 27995249406
+
+Empresa: N/A - 27995249407" vai tirar esse N/A da frente do numero,historico de solicitações vai ter como filtrar por turmar e vai colocar dentro do card de cada aluno qual foi o instrutor que liberou ele, na parte de historico por aluno, vai colcoar o nome do insrutor e nao o do pedagogico que liberou o aluno, de baixo do historico por aluno via criar outro que vai ser Instrutores que tem Mais alunos liberados, que vai ter como filtrar, por todos os instrutores e por nome de instrutores cadastrados, e vai criar um grafico como para medir os a porcetagem de quantos alunos foram liberados, e vai ter como a contagem certa dos alunso que foram liberados,de baixo desse novo vai criar outro que vai ser alunos mais liberados que vai aparecer so os alunos que foram embor muito e corre risco de reprovar ou que ja reporvaram que vai ter como filtrar isso com um select
+
+
+
+
+📌 PROMPT PARA IA DE CÓDIGO
+
+Você é uma IA especializada em desenvolvimento de sistemas web (front-end e back-end).
+Faça as seguintes alterações no sistema, mantendo o padrão visual, estrutura e lógica já existentes, exceto onde for indicado mudança.
+
+🔹 1. CARD DE FREQUÊNCIA
+
+Na seção Frequência, adicionar um select para o aluno selecionar a Unidade Curricular.
+
+A parte da porcentagem e da barra de progresso deve usar apenas as cores:
+
+🟢 Verde
+
+🟡 Amarelo
+
+🔴 Vermelho
+
+O restante do card deve seguir exatamente o mesmo padrão visual e estrutural dos outros cards existentes.
+
+🔹 2. PEDAGÓGICO – SOLICITAÇÕES
+Estrutura base da solicitação (exemplo):
+Turma: PFUS-01
+Motivo: Consulta médica
+Data Solicitação: 16/12/2025 16:06
+Status: Aguardando Pedagógico
+
+➕ Novos campos a adicionar:
+
+Telefone do responsável do aluno
+
+Telefone da empresa
+
+Instrutor que liberou o aluno a sair da sala
+
+Status: Aguardando Responsável
+
+🔹 3. REGRA: MAIOR OU MENOR DE IDADE
+🧑‍🦱 Aluno MAIOR de idade:
+
+Remover o botão “Responsável aceitou”
+
+Exibir o texto:
+
+Aluno é maior de idade e deseja ir embora
+
+🧒 Aluno MENOR de idade:
+
+Mantém o fluxo atual
+
+Na solicitação, adicionar os campos:
+
+Telefone do responsável
+Telefone da empresa
+Instrutor que liberou o aluno
+Status: Aguardando Portaria
+
+Exemplo ajustado:
+Turma: PFUS-01
+Motivo: Consulta médica
+Data Solicitação: 16/12/2025 16:11
+Responsável: 27995249406
+Empresa: 27995249407
+Instrutor: Nome do Instrutor
+Status: Aguardando Portaria
+
+
+⚠️ Remover o texto "N/A -" antes dos números de telefone, deixando apenas o número.
+
+🔹 4. HISTÓRICO DE SOLICITAÇÕES
+
+Adicionar filtro por turma
+
+Dentro do card de cada aluno, exibir:
+
+Nome do instrutor que liberou o aluno
+
+🔹 5. HISTÓRICO POR ALUNO
+
+Substituir o nome do pedagógico pelo nome do instrutor que liberou o aluno
+
+🔹 6. NOVA SEÇÃO – INSTRUTORES COM MAIS ALUNOS LIBERADOS
+
+Criar uma nova seção abaixo do histórico por aluno
+
+Funcionalidades:
+
+Filtro:
+
+Todos os instrutores
+
+Instrutor específico (select com nomes cadastrados)
+
+Gráfico mostrando:
+
+Porcentagem de alunos liberados por instrutor
+
+Exibir a contagem exata de alunos liberados
+
+🔹 7. NOVA SEÇÃO – ALUNOS MAIS LIBERADOS
+
+Criar uma seção abaixo da anterior
+
+Mostrar apenas alunos que:
+
+Saem com muita frequência
+
+Correm risco de reprovação
+
+Já reprovaram
+
+Adicionar select de filtro para controlar esses critérios
+
+🔹 8. OBSERVAÇÕES GERAIS
+
+Manter o padrão visual e estrutural já existente no sistema
+
+Reutilizar componentes sempre que possível
+
+Código limpo, organizado e comentado
