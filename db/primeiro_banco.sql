@@ -72,3 +72,21 @@ CREATE TABLE solicitacao (
     FOREIGN KEY (id_curricular) REFERENCES unidade_curricular(id_curricular),
     FOREIGN KEY (id_autorizacao) REFERENCES funcionario(id_funcionario) 
 );
+
+CREATE TABLE IF NOT EXISTS frequencia (
+    id_frequencia INT AUTO_INCREMENT PRIMARY KEY,
+    id_aluno INT NOT NULL,
+    id_uc INT NOT NULL,
+    data_falta DATE NOT NULL,
+    hora_saida TIME,
+    tipo ENUM('falta', 'saida_antecipada') DEFAULT 'falta',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_aluno) REFERENCES aluno(id_aluno),
+    FOREIGN KEY (id_uc) REFERENCES unidade_curricular(id_curricular)
+);
+
+ALTER TABLE solicitacao ADD COLUMN id_uc INT NULL AFTER id_autorizacao;
+ALTER TABLE solicitacao ADD FOREIGN KEY (id_uc) REFERENCES unidade_curricular(id_curricular);
+
+INSERT INTO funcionario (nome, cpf, tipo, senha_hash)
+VALUES ('Thiago Monechi', '22968899724', 'pedagógico', '(Aalxx_2025)');

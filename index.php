@@ -205,35 +205,33 @@ $msg_type = "";
 // LÓGICA ALUNO
 
 
-if ($tipo_user == 'aluno') {
-    if (isset($_POST['solicitar_saida'])) {
-        $id_curricular = LimpaPost($_POST['id_curricular']);
-        $motivo = $_POST['motivo'];
-        $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
+if (isset($_POST['solicitar_saida'])) {
+    $motivo = $_POST['motivo'];
+    $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
 
-        if (empty($motivo)) {
-            $msg = "Selecione o motivo da solicitação!";
-            $msg_type = "error";
-        } elseif ($motivo == '10' && empty($motivo_outro)) {
-            $msg = "Descreva o motivo da saída!";
-            $msg_type = "error";
-        } else {
-            $motivo_final = $motivo == '10' ? $motivo_outro : $motivo;
-            $motivo_completo = buildMotivo('aguardando_instrutor', $motivo_final);
+    if (empty($motivo)) {
+        $msg = "Selecione o motivo da solicitação!";
+        $msg_type = "error";
+    } elseif ($motivo == '10' && empty($motivo_outro)) {
+        $msg = "Descreva o motivo da saída!";
+        $msg_type = "error";
+    } else {
+        $motivo_final = $motivo == '10' ? $motivo_outro : $motivo;
+        $motivo_completo = buildMotivo('aguardando_instrutor', $motivo_final);
 
-            try {
-                $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, id_curricular, motivo, data_solicitada, status) VALUES (?, ?, ?, NOW(), 'solicitado')");
-                $stmt->execute([$user['id_aluno'], $id_curricular, $motivo_completo]);
-                $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
-                $msg_type = "success";
+        try {
+            // CORRIGIDO: Removido data_solicitada do VALUES
+            $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, motivo, data_solicitada, status) VALUES (?, ?, NOW(), 'solicitado')");
+            $stmt->execute([$user['id_aluno'], $motivo_completo]);
+            $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
+            $msg_type = "success";
 
-                if (!empty($user['contato_responsavel'])) {
-                    enviarWhatsApp($user['contato_responsavel'], "Seu filho(a) " . $user['nome'] . " solicitou saída da escola. Motivo: " . $motivo_final);
-                }
-            } catch (PDOException $e) {
-                $msg = "Erro ao enviar solicitação: " . $e->getMessage();
-                $msg_type = "error";
+            if (!empty($user['contato_responsavel'])) {
+                enviarWhatsApp($user['contato_responsavel'], "Seu filho(a) " . $user['nome'] . " solicitou saída da escola. Motivo: " . $motivo_final);
             }
+        } catch (PDOException $e) {
+            $msg = "Erro ao enviar solicitação: " . $e->getMessage();
+            $msg_type = "error";
         }
     }
 
@@ -543,13 +541,13 @@ if ($tipo_user == 'pedagógico') {
 
 // LÓGICA INSTRUTOR
 
-
 if ($tipo_user == 'instrutor') {
     if (isset($_POST['instrutor_acao'])) {
         $id_solicitacao = $_POST['id_solicitacao'];
-        $acao = $_POST['acao_instrutor'];
+        $acao = $_POST['instrutor_acao'];
+        $id_aluno = $_POST['id_aluno'];
+        $id_uc = isset($_POST['id_uc']) ? $_POST['id_uc'] : null;
 
-        // Fetch current motive to preserve it
         $stmt_current = $conn->prepare("SELECT motivo FROM solicitacao WHERE id_solicitacao = ?");
         $stmt_current->execute([$id_solicitacao]);
         $current_motivo_raw = $stmt_current->fetchColumn();
@@ -557,44 +555,75 @@ if ($tipo_user == 'instrutor') {
         $original_motivo = $parsed['motivo'];
 
         if ($acao == 'autorizar') {
-            // Update to aguardando_pedagogico
-            $new_motivo = buildMotivo('aguardando_pedagogico', $original_motivo);
+            if (empty($id_uc)) {
+                $msg = "Selecione a Unidade Curricular!";
+                $msg_type = "error";
+            } else {
+                $new_motivo = buildMotivo('aguardando_pedagogico', $original_motivo);
 
-            // Use data_autorizada for instrutor time as requested
-            $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', data_autorizada = NOW(), motivo = ? WHERE id_solicitacao = ?");
-            $stmt->execute([$new_motivo, $id_solicitacao]);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', data_autorizada = NOW(), motivo = ?, id_uc = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $id_uc, $id_solicitacao]);
 
-            $msg = "Solicitação autorizada! Aguardando pedagógico.";
-            $msg_type = "success";
+                // Registrar falta
+                $hora_saida = date('H:i:s');
+
+                // Verificar se a tabela frequencia existe
+                try {
+                    $stmt_falta = $conn->prepare("INSERT INTO frequencia (id_aluno, id_uc, data_falta, hora_saida, tipo) VALUES (?, ?, CURDATE(), ?, 'saida_antecipada')");
+                    $stmt_falta->execute([$id_aluno, $id_uc, $hora_saida]);
+                } catch (PDOException $e) {
+                    error_log("Erro ao registrar falta: " . $e->getMessage());
+                }
+
+                $msg = "Solicitação autorizada! Aguardando pedagógico.";
+                $msg_type = "success";
+            }
         } else {
-            // Update to recusado_instrutor
             $new_motivo = buildMotivo('recusado_instrutor', $original_motivo);
-
             $stmt = $conn->prepare("UPDATE solicitacao SET status = 'rejeitada', motivo = ? WHERE id_solicitacao = ?");
             $stmt->execute([$new_motivo, $id_solicitacao]);
             $msg = "Solicitação rejeitada!";
             $msg_type = "error";
         }
     }
+
     if (isset($_POST['registrar_falta'])) {
         $id_solicitacao = $_POST['id_solicitacao_falta'];
         $id_aluno = $_POST['id_aluno_falta'];
     }
 
-    $turmas_instrutor = $conn->query("
-        SELECT DISTINCT
-            t.id_turma,
-            t.nome as turma_nome,
-            c.nome as curso_nome,
-            COUNT(m.id_aluno) as total_alunos
-        FROM turma t
-        JOIN curso c ON t.id_curso = c.id_curso
-        JOIN matricula m ON t.id_turma = m.id_turma
-        JOIN aluno a ON m.id_aluno = a.id_aluno
-        GROUP BY t.id_turma, t.nome, c.nome
-        ORDER BY t.nome
-    ")->fetchAll();
+    // CARREGAR TURMAS DO INSTRUTOR
+    try {
+        $turmas_instrutor = $conn->query("
+            SELECT DISTINCT
+                t.id_turma,
+                t.nome as turma_nome,
+                c.nome as curso_nome,
+                COUNT(m.id_aluno) as total_alunos
+            FROM turma t
+            JOIN curso c ON t.id_curso = c.id_curso
+            JOIN matricula m ON t.id_turma = m.id_turma
+            JOIN aluno a ON m.id_aluno = a.id_aluno
+            GROUP BY t.id_turma, t.nome, c.nome
+            ORDER BY t.nome
+        ")->fetchAll();
+    } catch (PDOException $e) {
+        error_log("Erro ao carregar turmas do instrutor: " . $e->getMessage());
+        $turmas_instrutor = [];
+    }
 
+    // ESTATÍSTICAS
+    try {
+        $total_alunos = $conn->query("SELECT COUNT(DISTINCT m.id_aluno) as total FROM matricula m JOIN turma t ON m.id_turma = t.id_turma")->fetch()['total'];
+    } catch (PDOException $e) {
+        $total_alunos = 0;
+    }
+
+    try {
+        $solicitacoes_pendentes = $conn->query("SELECT COUNT(*) as total FROM solicitacao WHERE status = 'solicitado' AND motivo LIKE '%aguardando_instrutor%'")->fetch()['total'];
+    } catch (PDOException $e) {
+        $solicitacoes_pendentes = 0;
+    }
     $total_alunos = $conn->query("SELECT COUNT(DISTINCT m.id_aluno) as total FROM matricula m JOIN turma t ON m.id_turma = t.id_turma")->fetch()['total'];
     $solicitacoes_pendentes = $conn->query("SELECT COUNT(*) as total FROM solicitacao WHERE status = 'autorizado'")->fetch()['total'];
 }
@@ -659,31 +688,37 @@ if ($tipo_user == 'portaria') {
             </div>
         </div>
 
-        <?php if ($tipo_user != 'portaria'): ?>
-            <div class="navbar-menu">
-                <?php if ($tipo_user == 'aluno'): ?>
-                    <a href="#" onclick="showSection('solicitacao'); return false;">Nova Solicitação</a>
-                    <a href="#" onclick="showSection('info'); return false;">Informações</a>
-                    <a href="#" onclick="showSection('frequencia'); return false;">Minha Frequência</a>
-                <?php elseif ($tipo_user == 'pedagógico'): ?>
-                    <a href="#" onclick="showSection('solicitacoes'); return false;">Solicitações</a>
-                    <a href="#" onclick="showSection('aguardando_responsavel'); return false;">Aguardando Responsável</a>
-                    <a href="#" onclick="showSection('aguardando_portaria'); return false;">Aguardando Portaria</a>
-                    <a href="#" onclick="showSection('historico_solicitacoes'); return false;">Histórico de Solicitações</a>
-                    <a href="#" onclick="showSection('historico_alunos'); return false;">Histórico por Aluno</a>
-                    <a href="#" onclick="showSection('cursos'); return false;">Gerenciar Cursos</a>
-                    <a href="#" onclick="showSection('ucs'); return false;">Gerenciar UCs</a>
-                    <a href="#" onclick="showSection('turmas'); return false;">Gerenciar Turmas</a>
-                    <a href="#" onclick="showSection('gerenciar_alunos'); return false;">Gerenciar Alunos</a>
-                    <a href="#" onclick="showSection('gerenciar_funcionarios'); return false;">Gerenciar Funcionários</a>
-
-                <?php elseif ($tipo_user == 'instrutor'): ?>
-                    <a href="#" onclick="showSection('turmas_instrutor'); return false;">Minhas Turmas</a>
-                    <a href="#" onclick="showSection('solicitacoes_instrutor'); return false;">Solicitações</a>
-                    <a href="#" onclick="showSection('alunos_liberados_instrutor'); return false;">Alunos Liberados</a>
-                <?php endif; ?>
-            </div>
+        <?php if ($tipo_user == 'portaria'): ?>
+            <style>
+                .main-content {
+                    margin-left: 0 !important;
+                    padding: 30px;
+                }
+            </style>
         <?php endif; ?>
+        <div class="navbar-menu">
+            <?php if ($tipo_user == 'aluno'): ?>
+                <a href="#" onclick="showSection('solicitacao'); return false;">Nova Solicitação</a>
+                <a href="#" onclick="showSection('info'); return false;">Informações</a>
+                <a href="#" onclick="showSection('frequencia'); return false;">Minha Frequência</a>
+            <?php elseif ($tipo_user == 'pedagógico'): ?>
+                <a href="#" onclick="showSection('solicitacoes'); return false;">Solicitações</a>
+                <a href="#" onclick="showSection('aguardando_responsavel'); return false;">Aguardando Responsável</a>
+                <a href="#" onclick="showSection('aguardando_portaria'); return false;">Aguardando Portaria</a>
+                <a href="#" onclick="showSection('historico_solicitacoes'); return false;">Histórico de Solicitações</a>
+                <a href="#" onclick="showSection('historico_alunos'); return false;">Histórico por Aluno</a>
+                <a href="#" onclick="showSection('cursos'); return false;">Gerenciar Cursos</a>
+                <a href="#" onclick="showSection('ucs'); return false;">Gerenciar UCs</a>
+                <a href="#" onclick="showSection('turmas'); return false;">Gerenciar Turmas</a>
+                <a href="#" onclick="showSection('gerenciar_alunos'); return false;">Gerenciar Alunos</a>
+                <a href="#" onclick="showSection('gerenciar_funcionarios'); return false;">Gerenciar Funcionários</a>
+
+            <?php elseif ($tipo_user == 'instrutor'): ?>
+                <a href="#" onclick="showSection('turmas_instrutor'); return false;">Minhas Turmas</a>
+                <a href="#" onclick="showSection('solicitacoes_instrutor'); return false;">Solicitações</a>
+                <a href="#" onclick="showSection('alunos_liberados_instrutor'); return false;">Alunos Liberados</a>
+            <?php endif; ?>
+        </div>
 
         <div class="navbar-footer">
             <a href="sair.php">Sair</a>
@@ -704,7 +739,6 @@ if ($tipo_user == 'portaria') {
                     <p><strong>Nome:</strong> <?php echo htmlspecialchars($user['nome']); ?></p>
                     <p><strong>Matrícula:</strong> <?php echo htmlspecialchars($user['matricula']); ?></p>
                     <p><strong>CPF:</strong> <?php echo htmlspecialchars($user['cpf']); ?></p>
-                    <p><strong>Celular:</strong> <?php echo htmlspecialchars($user['celular']); ?></p>
                     <p><strong>Turma:</strong> <?php echo htmlspecialchars($user['turma_nome'] ?? 'Não matriculado'); ?></p>
                     <p><strong>Curso:</strong> <?php echo htmlspecialchars($user['curso_nome'] ?? 'Não matriculado'); ?></p>
                     <?php if (!empty($user['contato_responsavel'])): ?>
@@ -723,28 +757,12 @@ if ($tipo_user == 'portaria') {
                         <label>Curso:</label>
                         <input type="text" value="<?php echo htmlspecialchars($user['curso_nome'] ?? 'Não matriculado'); ?>" readonly>
 
-                        <label>Unidade Curricular:</label>
-                        <select name="id_curricular" required>
-                            <option value="">Selecione uma UC</option>
-                            <?php foreach ($ucs as $uc): ?>
-                                <option value="<?php echo $uc['id_curricular']; ?>"><?php echo htmlspecialchars($uc['nome']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-
                         <label>Turno:</label>
                         <select name="turno" required>
                             <option value="">Selecione o turno</option>
-                            <option value="manhã">Manhã</option>
-                            <option value="tarde">Tarde</option>
-                            <option value="noite">Noite</option>
-                        </select>
-
-                        <label>Modalidade:</label>
-                        <select name="modalidade" required>
-                            <option value="">Selecione a modalidade</option>
-                            <option value="presencial">Presencial</option>
-                            <option value="EAD">EAD</option>
-                            <option value="dual">Dual</option>
+                            <option value="manhã">Matutino</option>
+                            <option value="tarde">Vespertino</option>
+                            <option value="noite">Noturno</option>
                         </select>
 
                         <label>Turma:</label>
@@ -784,7 +802,94 @@ if ($tipo_user == 'portaria') {
             <div id="frequencia" class="section" style="display:none;">
                 <div class="container">
                     <h3>Minha Frequência</h3>
-                    <p>Sistema de frequência em desenvolvimento.</p>
+
+                    <?php
+                    // Buscar UCs do aluno
+                    $stmt_ucs_aluno = $conn->prepare("
+            SELECT uc.id_curricular, uc.nome, uc.carga_horaria,
+                   COUNT(f.id_frequencia) as total_faltas
+            FROM unidade_curricular uc
+            JOIN turma t ON uc.id_curso = t.id_curso
+            JOIN matricula m ON t.id_turma = m.id_turma
+            LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = m.id_aluno
+            WHERE m.id_aluno = ?
+            GROUP BY uc.id_curricular
+        ");
+                    $stmt_ucs_aluno->execute([$user['id_aluno']]);
+                    $ucs_aluno = $stmt_ucs_aluno->fetchAll();
+
+                    if (empty($ucs_aluno)): ?>
+                        <p>Você ainda não possui unidades curriculares cadastradas.</p>
+                    <?php else: ?>
+                        <div style="display: grid; gap: 20px;">
+                            <?php foreach ($ucs_aluno as $uc):
+                                $total_faltas = $uc['total_faltas'];
+                                $carga_horaria = $uc['carga_horaria'];
+
+                                // Calcular percentual de frequência
+                                $perc_freq = $carga_horaria > 0 ? (1 - ($total_faltas / $carga_horaria)) * 100 : 100;
+                                $perc_freq = max(0, min(100, $perc_freq)); // Entre 0 e 100
+
+                                // Verificar se pode sair (mínimo 75% de frequência)
+                                $pode_sair = $perc_freq >= 75;
+                                $proxima_falta_reprova = false;
+
+                                if ($carga_horaria > 0) {
+                                    $perc_com_mais_uma_falta = (1 - (($total_faltas + 1) / $carga_horaria)) * 100;
+                                    $proxima_falta_reprova = $perc_com_mais_uma_falta < 75;
+                                }
+
+                                $cor_grafico = $perc_freq >= 75 ? '#28a745' : '#dc3545';
+                                $cor_fundo = $perc_freq >= 75 ? '#d4edda' : '#f8d7da';
+                            ?>
+                                <div style="border: 2px solid <?php echo $cor_grafico; ?>; border-radius: 8px; padding: 20px; background: <?php echo $cor_fundo; ?>;">
+                                    <h4 style="margin-bottom: 15px; color: #333;"><?php echo htmlspecialchars($uc['nome']); ?></h4>
+
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                                        <div>
+                                            <p><strong>Carga Horária:</strong> <?php echo $carga_horaria; ?>h</p>
+                                            <p><strong>Total de Faltas:</strong> <?php echo $total_faltas; ?>h</p>
+                                        </div>
+                                        <div>
+                                            <p><strong>Frequência:</strong>
+                                                <span style="font-size: 1.5em; font-weight: bold; color: <?php echo $cor_grafico; ?>;">
+                                                    <?php echo number_format($perc_freq, 1); ?>%
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Gráfico de barra -->
+                                    <div style="background: #e9ecef; border-radius: 10px; height: 30px; overflow: hidden; margin-bottom: 15px;">
+                                        <div style="background: <?php echo $cor_grafico; ?>; height: 100%; width: <?php echo $perc_freq; ?>%; transition: width 0.3s ease;"></div>
+                                    </div>
+
+                                    <!-- Mensagem de aviso -->
+                                    <?php if ($pode_sair && !$proxima_falta_reprova): ?>
+                                        <div style="padding: 15px; background: #d4edda; border-left: 4px solid #28a745; border-radius: 4px;">
+                                            <p style="margin: 0; color: #155724;">
+                                                ✓ <strong>Você pode sair!</strong> Sua frequência está acima de 75%.
+                                            </p>
+                                        </div>
+                                    <?php elseif ($pode_sair && $proxima_falta_reprova): ?>
+                                        <div style="padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                            <p style="margin: 0; color: #856404;">
+                                                ⚠ <strong>Atenção!</strong> Se você sair agora, sua frequência cairá para
+                                                <?php echo number_format($perc_com_mais_uma_falta, 1); ?>% e você será reprovado!
+                                            </p>
+                                        </div>
+                                    <?php else: ?>
+                                        <div style="padding: 15px; background: #f8d7da; border-left: 4px solid #dc3545; border-radius: 4px;">
+                                            <p style="margin: 0; color: #721c24;">
+                                                ✗ <strong>Você não pode sair!</strong> Sua frequência já está abaixo de 75%.
+                                                Você será reprovado se continuar faltando.
+                                            </p>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endif; ?>
@@ -2035,219 +2140,10 @@ if (isset($_POST['logar'])) {
 }
 ?>
 
-<!-- INSTRUTOR -->
-<?php if ($tipo_user == 'instrutor'): ?>
-    <div id="turmas_instrutor" class="section">
-        <div class="container">
-            <h3>Minhas Turmas - Detalhes</h3>
-            <select onchange="showList('turma-' + this.value)">
-                <option value="">Selecione uma turma</option>
-                <?php foreach ($turmas_instrutor as $turma): ?>
-                    <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?> - <?php echo htmlspecialchars($turma['curso_nome']); ?></option>
-                <?php endforeach; ?>
-            </select>
-            <?php foreach ($turmas_instrutor as $turma): ?>
-                <div id="list-turma-<?php echo $turma['id_turma']; ?>" class="list" style="display:none;">
-                    <h4>Alunos da Turma: <?php echo htmlspecialchars($turma['turma_nome']); ?></h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Nome</th>
-                                <th>Matrícula</th>
-                                <th>Telefone</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $alunos_turma = $conn->prepare("SELECT a.nome, a.matricula, a.celular FROM aluno a JOIN matricula m ON a.id_aluno = m.id_aluno WHERE m.id_turma = ? ORDER BY a.nome");
-                            $alunos_turma->execute([$turma['id_turma']]);
-                            foreach ($alunos_turma->fetchAll() as $aluno) {
-                                echo "<tr>";
-                                echo "<td>" . htmlspecialchars($aluno['nome']) . "</td>";
-                                echo "<td>" . htmlspecialchars($aluno['matricula']) . "</td>";
-                                echo "<td>" . htmlspecialchars($aluno['celular']) . "</td>";
-                                echo "</tr>";
-                            }
-                            ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-
-    <!-- SOLICITAÇÕES DO INSTRUTOR -->
-    <div id="solicitacoes_instrutor" class="section" style="display:none;">
-        <div class="container">
-            <h3>Solicitações Pendentes</h3>
-
-            <div style="margin-bottom: 20px;">
-                <label for="filtro_turma_solicitacao">Filtrar por Turma:</label>
-                <select id="filtro_turma_solicitacao" onchange="filtrarSolicitacoesPorTurma()">
-                    <option value="">Todas as Turmas</option>
-                    <?php foreach ($turmas_instrutor as $turma): ?>
-                        <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <?php
-            $motivos_map = [
-                '1' => 'Consulta médica',
-                '2' => 'Consulta odontológica',
-                '3' => 'Exames médicos',
-                '4' => 'Problemas de saúde',
-                '5' => 'Solicitação da empresa',
-                '6' => 'Solicitação da família',
-                '7' => 'Viagem particular',
-                '8' => 'Viagem a trabalho',
-                '9' => 'Treinamento a trabalho'
-            ];
-
-            $solicitacoes_instrutor = $conn->query("
-            SELECT s.*, a.nome as aluno_nome, a.matricula, 
-                   t.id_turma, t.nome as turma_nome,
-                   DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
-            FROM solicitacao s 
-            JOIN aluno a ON s.id_aluno = a.id_aluno 
-            JOIN matricula m ON a.id_aluno = m.id_aluno
-            JOIN turma t ON m.id_turma = t.id_turma
-            WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
-            ORDER BY s.data_solicitada DESC
-        ")->fetchAll();
-
-            if (empty($solicitacoes_instrutor)): ?>
-                <p>Nenhuma solicitação pendente no momento.</p>
-            <?php else: ?>
-                <?php foreach ($solicitacoes_instrutor as $s):
-                    $parsed = parseMotivo($s['motivo']);
-                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                    $status_cor = getStatusColor($s['status'], $s['motivo']);
-                ?>
-                    <div class="solicitacao-card solicitacao-card-instrutor"
-                        data-turma-id="<?php echo $s['id_turma']; ?>"
-                        style="border-left: 4px solid <?php echo $status_cor; ?>;">
-                        <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
-                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome']); ?></p>
-                        <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                        <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
-
-                        <div class="action-buttons">
-                            <form method="POST" style="display: inline;">
-                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
-                                <input type="hidden" name="acao_instrutor" value="autorizar">
-                                <button type="submit" name="instrutor_acao" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Autorizar</button>
-                            </form>
-                            <form method="POST" style="display: inline;">
-                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
-                                <input type="hidden" name="acao_instrutor" value="rejeitar">
-                                <button type="submit" name="instrutor_acao" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">Rejeitar</button>
-                            </form>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- ALUNOS LIBERADOS -->
-    <div id="alunos_liberados_instrutor" class="section" style="display:none;">
-        <div class="container">
-            <h3>Alunos Liberados - Registro de Faltas</h3>
-
-            <div style="margin-bottom: 20px;">
-                <label for="filtro_turma_liberados">Filtrar por Turma:</label>
-                <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
-                    <option value="">Todas as Turmas</option>
-                    <?php foreach ($turmas_instrutor as $turma): ?>
-                        <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <script>
-                function filtrarLiberadosPorTurma() {
-                    const turmaId = document.getElementById('filtro_turma_liberados').value;
-                    const cards = document.querySelectorAll('.aluno-liberado-card');
-
-                    cards.forEach(card => {
-                        if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
-                            card.style.display = 'block';
-                        } else {
-                            card.style.display = 'none';
-                        }
-                    });
-                }
-            </script>
-
-            <?php
-            $alunos_liberados_instrutor = $conn->query("
-                SELECT s.*, a.nome as aluno_nome, a.matricula, 
-                       t.id_turma, t.nome as turma_nome,
-                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                       DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as data_autorizada_fmt,
-                       DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
-                FROM solicitacao s 
-                JOIN aluno a ON s.id_aluno = a.id_aluno 
-                JOIN matricula m ON a.id_aluno = m.id_aluno
-                JOIN turma t ON m.id_turma = t.id_turma
-                WHERE (s.status = 'liberado' OR s.status = 'concluido')
-                ORDER BY s.data_solicitada DESC
-            ")->fetchAll();
-
-            if (empty($alunos_liberados_instrutor)): ?>
-                <p>Nenhum aluno liberado no momento.</p>
-            <?php else: ?>
-                <?php
-                $motivos_map = [
-                    '1' => 'Consulta médica',
-                    '2' => 'Consulta odontológica',
-                    '3' => 'Exames médicos',
-                    '4' => 'Problemas de saúde',
-                    '5' => 'Solicitação da empresa',
-                    '6' => 'Solicitação da família',
-                    '7' => 'Viagem particular',
-                    '8' => 'Viagem a trabalho',
-                    '9' => 'Treinamento a trabalho'
-                ];
-
-                foreach ($alunos_liberados_instrutor as $al):
-                    $parsed = parseMotivo($al['motivo']);
-                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                    $status_texto = getStatusText($al['status'], $al['motivo']);
-                ?>
-                    <div class="solicitacao-card aluno-liberado-card" data-turma-id="<?php echo $al['id_turma']; ?>" style="border-left: 4px solid #28a745;">
-                        <div class="solicitacao-header">
-                            <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
-                        </div>
-                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
-                        <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                        <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
-                        <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
-
-                        <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
-                            <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
-                        <?php endif; ?>
-
-                        <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
-
-                        <div class="action-buttons" style="margin-top:15px;">
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="id_solicitacao_falta" value="<?php echo $al['id_solicitacao']; ?>">
-                                <input type="hidden" name="id_aluno_falta" value="<?php echo $al['id_aluno']; ?>">
-                            </form>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
-<?php endif; ?>
-
 <!-- PORTARIA -->
 <?php if ($tipo_user == 'portaria'): ?>
-    <div class="section" style="max-width: 600px; margin: 50px auto;">
-        <div class="container">
+    <div id="controle_portaria" class="section" style="display: block;">
+        <div class="container" style="max-width: 600px; margin: 50px auto;">
             <h2 style="text-align: center; color: #007bff; margin-bottom: 30px;">Controle de Saídas</h2>
             <form method="POST">
                 <label style="font-weight: bold; display: block; margin-bottom: 10px;">Código de Liberação:</label>
@@ -2264,14 +2160,14 @@ if (isset($_POST['logar'])) {
                 <h4>Últimas Saídas Registradas</h4>
                 <?php
                 $ultimas_saidas = $conn->query("
-                            SELECT s.*, a.nome, a.matricula, 
-                                   DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as saida_fmt
-                            FROM solicitacao s
-                            JOIN aluno a ON s.id_aluno = a.id_aluno
-                            WHERE s.status = 'concluido'
-                            ORDER BY s.data_saida DESC
-                            LIMIT 5
-                        ")->fetchAll();
+                    SELECT s.*, a.nome, a.matricula, 
+                           DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as saida_fmt
+                    FROM solicitacao s
+                    JOIN aluno a ON s.id_aluno = a.id_aluno
+                    WHERE s.status = 'concluido'
+                    ORDER BY s.data_saida DESC
+                    LIMIT 5
+                ")->fetchAll();
 
                 if (empty($ultimas_saidas)): ?>
                     <p>Nenhuma saída registrada ainda.</p>
@@ -2289,6 +2185,352 @@ if (isset($_POST['logar'])) {
         </div>
     </div>
 <?php endif; ?>
+
+<!-- INSTRUTOR -->
+
+<?php if ($tipo_user == 'instrutor'): ?>
+    <div id="turmas_instrutor" class="section">
+        <div class="container">
+            <h3>Minhas Turmas - Detalhes</h3>
+
+            <?php if (empty($turmas_instrutor)): ?>
+                <p style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 5px;">
+                    Nenhuma turma encontrada no momento.
+                </p>
+            <?php else: ?>
+                <select onchange="showList('turma-' + this.value)">
+                    <option value="">Selecione uma turma</option>
+                    <?php foreach ($turmas_instrutor as $turma): ?>
+                        <option value="<?php echo $turma['id_turma']; ?>">
+                            <?php echo htmlspecialchars($turma['turma_nome']); ?> - <?php echo htmlspecialchars($turma['curso_nome']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <?php foreach ($turmas_instrutor as $turma): ?>
+                    <div id="list-turma-<?php echo $turma['id_turma']; ?>" class="list" style="display:none;">
+                        <h4>Alunos da Turma: <?php echo htmlspecialchars($turma['turma_nome']); ?></h4>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Matrícula</th>
+                                    <th>Telefone do Responsável</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php
+                                try {
+                                    $alunos_turma = $conn->prepare("
+                                        SELECT a.nome, a.matricula, a.contato_responsavel 
+                                        FROM aluno a 
+                                        JOIN matricula m ON a.id_aluno = m.id_aluno 
+                                        WHERE m.id_turma = ? 
+                                        ORDER BY a.nome
+                                    ");
+                                    $alunos_turma->execute([$turma['id_turma']]);
+                                    $alunos = $alunos_turma->fetchAll();
+
+                                    if (empty($alunos)): ?>
+                                        <tr>
+                                            <td colspan="3" style="text-align: center;">Nenhum aluno matriculado nesta turma.</td>
+                                        </tr>
+                                        <?php else:
+                                        foreach ($alunos as $aluno): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($aluno['nome']); ?></td>
+                                                <td><?php echo htmlspecialchars($aluno['matricula']); ?></td>
+                                                <td><?php echo htmlspecialchars($aluno['contato_responsavel'] ?? 'Não cadastrado'); ?></td>
+                                            </tr>
+                                <?php endforeach;
+                                    endif;
+                                } catch (PDOException $e) {
+                                    error_log("Erro ao buscar alunos da turma: " . $e->getMessage());
+                                    echo '<tr><td colspan="3" style="text-align: center; color: #dc3545;">Erro ao carregar alunos.</td></tr>';
+                                }
+                                ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- SOLICITAÇÕES DO INSTRUTOR -->
+
+    <div id="solicitacoes_instrutor" class="section" style="display:none;">
+        <div class="container">
+            <h3>Solicitações Pendentes</h3>
+
+            <?php if (!empty($turmas_instrutor)): ?>
+                <div style="margin-bottom: 20px;">
+                    <label for="filtro_turma_solicitacao">Filtrar por Turma:</label>
+                    <select id="filtro_turma_solicitacao" onchange="filtrarSolicitacoesPorTurma()">
+                        <option value="">Todas as Turmas</option>
+                        <?php foreach ($turmas_instrutor as $turma): ?>
+                            <option value="<?php echo $turma['id_turma']; ?>">
+                                <?php echo htmlspecialchars($turma['turma_nome']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php endif; ?>
+
+            <?php
+            $motivos_map = [
+                '1' => 'Consulta médica',
+                '2' => 'Consulta odontológica',
+                '3' => 'Exames médicos',
+                '4' => 'Problemas de saúde',
+                '5' => 'Solicitação da empresa',
+                '6' => 'Solicitação da família',
+                '7' => 'Viagem particular',
+                '8' => 'Viagem a trabalho',
+                '9' => 'Treinamento a trabalho'
+            ];
+
+            try {
+                $solicitacoes_instrutor = $conn->query("
+                    SELECT s.*, a.nome as aluno_nome, a.matricula, 
+                           t.id_turma, t.nome as turma_nome, t.id_curso,
+                           DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                    FROM solicitacao s 
+                    JOIN aluno a ON s.id_aluno = a.id_aluno 
+                    JOIN matricula m ON a.id_aluno = m.id_aluno
+                    JOIN turma t ON m.id_turma = t.id_turma
+                    WHERE s.status = 'solicitado' AND s.motivo LIKE '%STATUS:aguardando_instrutor%'
+                    ORDER BY s.data_solicitada DESC
+                ")->fetchAll();
+            } catch (PDOException $e) {
+                error_log("Erro ao buscar solicitações: " . $e->getMessage());
+                $solicitacoes_instrutor = [];
+            }
+
+            if (empty($solicitacoes_instrutor)): ?>
+                <p>Nenhuma solicitação pendente no momento.</p>
+            <?php else: ?>
+                <?php foreach ($solicitacoes_instrutor as $s):
+                    $parsed = parseMotivo($s['motivo']);
+                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                    $status_cor = getStatusColor($s['status'], $s['motivo']);
+                    try {
+                        $stmt_ucs = $conn->prepare("SELECT id_curricular, nome FROM unidade_curricular WHERE id_curso = ? ORDER BY nome");
+                        $stmt_ucs->execute([$s['id_curso']]);
+                        $ucs_turma = $stmt_ucs->fetchAll();
+                    } catch (PDOException $e) {
+                        $ucs_turma = [];
+                    }
+                ?>
+                    <div class="solicitacao-card solicitacao-card-instrutor"
+                        data-turma-id="<?php echo $s['id_turma']; ?>"
+                        style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                        <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($s['turma_nome']); ?></p>
+                        <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                        <p><strong>Data Solicitação:</strong> <?php echo $s['data_solicitada_fmt']; ?></p>
+
+                        <form method="POST" style="margin-top: 15px;">
+                            <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
+                            <input type="hidden" name="id_aluno" value="<?php echo $s['id_aluno']; ?>">
+
+                            <?php if (!empty($ucs_turma)): ?>
+                                <label style="display: block; margin-bottom: 8px;"><strong>Selecione a Unidade Curricular:</strong></label>
+                                <select name="id_uc" required style="width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="">Selecione a UC</option>
+                                    <?php foreach ($ucs_turma as $uc): ?>
+                                        <option value="<?php echo $uc['id_curricular']; ?>">
+                                            <?php echo htmlspecialchars($uc['nome']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else: ?>
+                                <p style="color: #dc3545; margin-bottom: 15px;">⚠ Nenhuma UC cadastrada para esta turma!</p>
+                            <?php endif; ?>
+
+                            <div class="action-buttons">
+                                <button type="submit" name="instrutor_acao" value="autorizar"
+                                    <?php echo empty($ucs_turma) ? 'disabled' : ''; ?>
+                                    style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    Autorizar
+                                </button>
+                                <button type="submit" name="instrutor_acao" value="rejeitar"
+                                    style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                    Rejeitar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ALUNOS LIBERADOS -->
+    <div id="alunos_liberados_instrutor" class="section" style="display:none;">
+        <div class="container">
+            <h3>Alunos Liberados - Registro de Faltas</h3>
+
+            <?php if (!empty($turmas_instrutor)): ?>
+                <div style="margin-bottom: 20px;">
+                    <label for="filtro_turma_liberados">Filtrar por Turma:</label>
+                    <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
+                        <option value="">Todas as Turmas</option>
+                        <?php foreach ($turmas_instrutor as $turma): ?>
+                            <option value="<?php echo $turma['id_turma']; ?>">
+                                <?php echo htmlspecialchars($turma['turma_nome']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            <?php endif; ?>
+
+            <?php
+            try {
+                $alunos_liberados_instrutor = $conn->query("
+                    SELECT s.*, a.nome as aluno_nome, a.matricula, 
+                           t.id_turma, t.nome as turma_nome,
+                           uc.nome as uc_nome,
+                           DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                           DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as data_autorizada_fmt,
+                           DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                    FROM solicitacao s 
+                    JOIN aluno a ON s.id_aluno = a.id_aluno 
+                    JOIN matricula m ON a.id_aluno = m.id_aluno
+                    JOIN turma t ON m.id_turma = t.id_turma
+                    LEFT JOIN unidade_curricular uc ON s.id_uc = uc.id_curricular
+                    WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                    ORDER BY s.data_solicitada DESC
+                ")->fetchAll();
+            } catch (PDOException $e) {
+                error_log("Erro ao buscar alunos liberados: " . $e->getMessage());
+                $alunos_liberados_instrutor = [];
+            }
+
+            if (empty($alunos_liberados_instrutor)): ?>
+                <p>Nenhum aluno liberado no momento.</p>
+            <?php else: ?>
+                <?php
+                foreach ($alunos_liberados_instrutor as $al):
+                    $parsed = parseMotivo($al['motivo']);
+                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                    $status_texto = getStatusText($al['status'], $al['motivo']);
+                ?>
+                    <div class="solicitacao-card aluno-liberado-card"
+                        data-turma-id="<?php echo $al['id_turma']; ?>"
+                        style="border-left: 4px solid #28a745;">
+                        <div class="solicitacao-header">
+                            <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                        </div>
+                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
+                        <p><strong>UC:</strong> <?php echo htmlspecialchars($al['uc_nome'] ?? 'Não informada'); ?></p>
+                        <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                        <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
+                        <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
+
+                        <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
+                            <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
+                        <?php endif; ?>
+
+                        <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+<?php endif; ?>
+
+<!-- ALUNOS LIBERADOS -->
+<div id="alunos_liberados_instrutor" class="section" style="display:none;">
+    <div class="container">
+        <h3>Alunos Liberados - Registro de Faltas</h3>
+
+        <div style="margin-bottom: 20px;">
+            <label for="filtro_turma_liberados">Filtrar por Turma:</label>
+            <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
+                <option value="">Todas as Turmas</option>
+                <?php foreach ($turmas_instrutor as $turma): ?>
+                    <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <script>
+            function filtrarLiberadosPorTurma() {
+                const turmaId = document.getElementById('filtro_turma_liberados').value;
+                const cards = document.querySelectorAll('.aluno-liberado-card');
+
+                cards.forEach(card => {
+                    if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+        </script>
+
+        <?php
+        $alunos_liberados_instrutor = $conn->query("
+                SELECT s.*, a.nome as aluno_nome, a.matricula, 
+                       t.id_turma, t.nome as turma_nome,
+                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                       DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as data_autorizada_fmt,
+                       DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                FROM solicitacao s 
+                JOIN aluno a ON s.id_aluno = a.id_aluno 
+                JOIN matricula m ON a.id_aluno = m.id_aluno
+                JOIN turma t ON m.id_turma = t.id_turma
+                WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                ORDER BY s.data_solicitada DESC
+            ")->fetchAll();
+
+        if (empty($alunos_liberados_instrutor)): ?>
+            <p>Nenhum aluno liberado no momento.</p>
+        <?php else: ?>
+            <?php
+            $motivos_map = [
+                '1' => 'Consulta médica',
+                '2' => 'Consulta odontológica',
+                '3' => 'Exames médicos',
+                '4' => 'Problemas de saúde',
+                '5' => 'Solicitação da empresa',
+                '6' => 'Solicitação da família',
+                '7' => 'Viagem particular',
+                '8' => 'Viagem a trabalho',
+                '9' => 'Treinamento a trabalho'
+            ];
+
+            foreach ($alunos_liberados_instrutor as $al):
+                $parsed = parseMotivo($al['motivo']);
+                $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                $status_texto = getStatusText($al['status'], $al['motivo']);
+            ?>
+                <div class="solicitacao-card aluno-liberado-card" data-turma-id="<?php echo $al['id_turma']; ?>" style="border-left: 4px solid #28a745;">
+                    <div class="solicitacao-header">
+                        <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                    </div>
+                    <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
+                    <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                    <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
+                    <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
+
+                    <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
+                        <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
+                    <?php endif; ?>
+
+                    <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
+
+                    <div class="action-buttons" style="margin-top:15px;">
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="id_solicitacao_falta" value="<?php echo $al['id_solicitacao']; ?>">
+                            <input type="hidden" name="id_aluno_falta" value="<?php echo $al['id_aluno']; ?>">
+                        </form>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
 </div>
 </body>
 
