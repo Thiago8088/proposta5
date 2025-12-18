@@ -725,6 +725,53 @@ if ($tipo_user == 'portaria') {
         </div>
     </nav>
 
+    <?php
+$mostrar_alerta_frequencia = false;
+$msg_alerta_frequencia = '';
+
+if ($tipo_user == 'aluno') {
+    $stmt_alerta = $conn->prepare("
+        SELECT uc.carga_horaria,
+               COUNT(f.id_frequencia) as total_faltas,
+               uc.nome
+        FROM unidade_curricular uc
+        JOIN turma t ON uc.id_curso = t.id_curso
+        JOIN matricula m ON t.id_turma = m.id_turma
+        LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = m.id_aluno
+        WHERE m.id_aluno = ?
+        GROUP BY uc.id_curricular
+    ");
+    $stmt_alerta->execute([$user['id_aluno']]);
+    $ucs_alerta = $stmt_alerta->fetchAll();
+
+    foreach ($ucs_alerta as $uc) {
+        if ($uc['carga_horaria'] > 0) {
+            $perc_freq = (1 - ($uc['total_faltas'] / $uc['carga_horaria'])) * 100;
+            $perc_com_mais_uma_falta = (1 - (($uc['total_faltas'] + 1) / $uc['carga_horaria'])) * 100;
+
+            if ($perc_freq < 75) {
+                $mostrar_alerta_frequencia = true;
+                $msg_alerta_frequencia = "⚠️ Atenção! Sua frequência está abaixo de 75%. Você corre risco de reprovação.";
+                break;
+            }
+
+            if ($perc_freq >= 75 && $perc_com_mais_uma_falta < 75) {
+                $mostrar_alerta_frequencia = true;
+                $msg_alerta_frequencia = "⚠️ Atenção! Você está no limite de faltas. A próxima falta pode causar reprovação.";
+                break;
+            }
+        }
+    }
+}
+?>
+
+<?php if ($mostrar_alerta_frequencia): ?>
+    <div class="alerta-frequencia-topo">
+        <?php echo $msg_alerta_frequencia; ?>
+    </div>
+<?php endif; ?>
+
+
     <div class="main-content">
         <?php if (!empty($msg)): ?>
             <div class="msg <?php echo $msg_type; ?>">
@@ -855,7 +902,7 @@ if ($tipo_user == 'portaria') {
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
                                     <div>
                                         <p><strong>Carga Horária:</strong> <?php echo $carga_horaria; ?>h</p>
-                                        <p><strong>Total de Faltas:</strong> <?php echo $total_faltas; ?>h</p>
+                                        <p><strong>Total de Faltas:</strong> <?php echo $total_faltas; ?></p>
                                     </div>
                                     <div>
                                         <p><strong>Frequência:</strong>

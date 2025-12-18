@@ -5,12 +5,13 @@
 	Código limpo, organizado e comentado.
 
 -Painel do Instrutor
-	Instrutor pode cancelar o processo de saída do aluno.
-	Instrutor pode rejeitar a saída caso o aluno desista.
-	Rejeição de saída gera cancelamento automático no sistema do pedagógico
-	Botões disponíveis:
-		Cancelar saída
-		Rejeitar saída
+	Instrutor pode cancelar o processo de saída do aluno. <-- CONCLUIDO -->
+	Instrutor pode rejeitar a saída caso o aluno desista. <-- CONCLUIDO -->
+	Rejeição de saída gera cancelamento automático no sistema do pedagógico <-- CONCLUIDO -->
+	Botões disponíveis: <-- CONCLUIDO -->
+		Cancelar saída <-- CONCLUIDO -->
+		Rejeitar saída <-- CONCLUIDO -->
+
 
 -Regras de Saída do Aluno
 	Caso o aluno esteja vinculado a uma empresa, enviar notificação para a empresa liberar a saída.
