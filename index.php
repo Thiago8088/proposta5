@@ -1232,6 +1232,20 @@ if ($tipo_user == 'portaria') {
                         $select_fields .= ", a.contato_empresa";
                     }
 
+                    $liberadas = $conn->query("
+                           SELECT $select_fields,
+                                  f.nome as instrutor_nome,
+                                  DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+                                  DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+                           FROM solicitacao s
+                           JOIN aluno a ON s.id_aluno = a.id_aluno
+                           LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                           LEFT JOIN turma t ON m.id_turma = t.id_turma
+                           LEFT JOIN funcionario f ON s.id_autorizacao = f.id_funcionario
+                           WHERE (s.status = 'liberado' OR s.status = 'concluido')
+                           ORDER BY s.data_solicitada DESC
+                       ")->fetchAll();
+
                     if (empty($liberadas)): ?>
                         <p style="text-align:center;">Nenhuma solicitação liberada.</p>
                         <?php else:
@@ -1288,12 +1302,13 @@ if ($tipo_user == 'portaria') {
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
+            </div>
 
-                <!-- RECUSADAS -->
-                <div id="historico-recusadas" class="historico-content">
-                    <h4 style="text-align:center; margin-bottom:20px; color:#dc3545;">Solicitações Recusadas</h4>
-                    <?php
-                    $recusadas = $conn->query("
+            <!-- RECUSADAS -->
+            <div id="historico-recusadas" class="historico-content">
+                <h4 style="text-align:center; margin-bottom:20px; color:#dc3545;">Solicitações Recusadas</h4>
+                <?php
+                $recusadas = $conn->query("
                 SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
                        DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
                 FROM solicitacao s
@@ -1304,70 +1319,20 @@ if ($tipo_user == 'portaria') {
                 ORDER BY s.data_solicitada DESC
             ")->fetchAll();
 
-                    if (empty($recusadas)): ?>
-                        <p style="text-align:center;">Nenhuma solicitação recusada.</p>
-                        <?php else:
-                        foreach ($recusadas as $s):
-                            $parsed = parseMotivo($s['motivo']);
-                            $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
-                                ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                            $status_texto = getStatusText($s['status'], $s['motivo']);
-                            $quem_recusou = 'N/A';
-                            if (strpos($s['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
-                            elseif (strpos($s['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
-                            elseif (strpos($s['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
-                        ?>
-                            <div class="solicitacao-card" style="border-left: 4px solid #dc3545;">
-                                <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
-                                <div class="solicitacao-info">
-                                    <div class="info-item">
-                                        <strong>Turma:</strong>
-                                        <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?>
-                                    </div>
-                                    <div class="info-item">
-                                        <strong>Motivo:</strong>
-                                        <?php echo htmlspecialchars($motivo_texto); ?>
-                                    </div>
-                                    <div class="info-item">
-                                        <strong>Recusado por:</strong>
-                                        <?php echo $quem_recusou; ?>
-                                    </div>
-                                    <div class="info-item">
-                                        <strong>Data:</strong>
-                                        <?php echo $s['data_solicitada_fmt']; ?>
-                                    </div>
-                                </div>
-                                <p style="margin-top:10px;"><strong>Status:</strong>
-                                    <span style="color: #dc3545; font-weight: bold;"><?php echo $status_texto; ?></span>
-                                </p>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-
-                <!-- TODAS -->
-                <div id="historico-todas" class="historico-content">
-                    <h4 style="text-align:center; margin-bottom:20px;">Todas as Solicitações</h4>
-                    <?php
-                    $todas = $conn->query("
-                SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
-                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
-                FROM solicitacao s
-                JOIN aluno a ON s.id_aluno = a.id_aluno
-                LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                LEFT JOIN turma t ON m.id_turma = t.id_turma
-                ORDER BY s.data_solicitada DESC
-                LIMIT 50
-            ")->fetchAll();
-
-                    foreach ($todas as $s):
+                if (empty($recusadas)): ?>
+                    <p style="text-align:center;">Nenhuma solicitação recusada.</p>
+                    <?php else:
+                    foreach ($recusadas as $s):
                         $parsed = parseMotivo($s['motivo']);
                         $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
                             ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                        $status_cor = getStatusColor($s['status'], $s['motivo']);
                         $status_texto = getStatusText($s['status'], $s['motivo']);
+                        $quem_recusou = 'N/A';
+                        if (strpos($s['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
+                        elseif (strpos($s['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
+                        elseif (strpos($s['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
                     ?>
-                        <div class="solicitacao-card" style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                        <div class="solicitacao-card" style="border-left: 4px solid #dc3545;">
                             <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
                             <div class="solicitacao-info">
                                 <div class="info-item">
@@ -1379,20 +1344,70 @@ if ($tipo_user == 'portaria') {
                                     <?php echo htmlspecialchars($motivo_texto); ?>
                                 </div>
                                 <div class="info-item">
+                                    <strong>Recusado por:</strong>
+                                    <?php echo $quem_recusou; ?>
+                                </div>
+                                <div class="info-item">
                                     <strong>Data:</strong>
                                     <?php echo $s['data_solicitada_fmt']; ?>
                                 </div>
-                                <div class="info-item">
-                                    <strong>Status:</strong>
-                                    <span style="color: <?php echo $status_cor; ?>; font-weight: bold;">
-                                        <?php echo $status_texto; ?>
-                                    </span>
-                                </div>
                             </div>
+                            <p style="margin-top:10px;"><strong>Status:</strong>
+                                <span style="color: #dc3545; font-weight: bold;"><?php echo $status_texto; ?></span>
+                            </p>
                         </div>
                     <?php endforeach; ?>
-                </div>
+                <?php endif; ?>
             </div>
+
+            <!-- TODAS -->
+            <div id="historico-todas" class="historico-content">
+                <h4 style="text-align:center; margin-bottom:20px;">Todas as Solicitações</h4>
+                <?php
+                $todas = $conn->query("
+                SELECT s.*, a.nome as aluno_nome, a.matricula, t.nome as turma_nome,
+                       DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt
+                FROM solicitacao s
+                JOIN aluno a ON s.id_aluno = a.id_aluno
+                LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+                LEFT JOIN turma t ON m.id_turma = t.id_turma
+                ORDER BY s.data_solicitada DESC
+                LIMIT 50
+            ")->fetchAll();
+
+                foreach ($todas as $s):
+                    $parsed = parseMotivo($s['motivo']);
+                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                        ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                    $status_cor = getStatusColor($s['status'], $s['motivo']);
+                    $status_texto = getStatusText($s['status'], $s['motivo']);
+                ?>
+                    <div class="solicitacao-card" style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                        <h4><?php echo htmlspecialchars($s['aluno_nome']); ?> (<?php echo htmlspecialchars($s['matricula']); ?>)</h4>
+                        <div class="solicitacao-info">
+                            <div class="info-item">
+                                <strong>Turma:</strong>
+                                <?php echo htmlspecialchars($s['turma_nome'] ?? 'N/A'); ?>
+                            </div>
+                            <div class="info-item">
+                                <strong>Motivo:</strong>
+                                <?php echo htmlspecialchars($motivo_texto); ?>
+                            </div>
+                            <div class="info-item">
+                                <strong>Data:</strong>
+                                <?php echo $s['data_solicitada_fmt']; ?>
+                            </div>
+                            <div class="info-item">
+                                <strong>Status:</strong>
+                                <span style="color: <?php echo $status_cor; ?>; font-weight: bold;">
+                                    <?php echo $status_texto; ?>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
         </div>
 
         <!-- HISTÓRICO POR ALUNO -->
@@ -1409,21 +1424,6 @@ if ($tipo_user == 'portaria') {
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <?php
-                    $liberadas = $conn->query("
-             SELECT $select_fields,
-             f.nome as instrutor_nome,
-             DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-             DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
-             FROM solicitacao s
-             JOIN aluno a ON s.id_aluno = a.id_aluno
-             LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-             LEFT JOIN turma t ON m.id_turma = t.id_turma
-             LEFT JOIN funcionario f ON s.id_autorizacao = f.id_funcionario
-             WHERE (s.status = 'liberado' OR s.status = 'concluido')
-             ORDER BY s.data_solicitada DESC
-             ")->fetchAll();
-                    ?>
                 </div>
 
                 <?php
@@ -1661,12 +1661,14 @@ if ($tipo_user == 'portaria') {
 
                 <?php
                 $stats_instrutores = $conn->query("
-            SELECT f.id_funcionario, f.nome, COUNT(s.id_solicitacao) as total_liberacoes
+            SELECT f.id_funcionario, f.nome, 
+                   COALESCE(COUNT(s.id_solicitacao), 0) as total_liberacoes
             FROM funcionario f
-            JOIN solicitacao s ON f.id_funcionario = s.id_autorizacao
-            WHERE f.tipo = 'instrutor' AND s.status IN ('liberado', 'concluido')
-            GROUP BY f.id_funcionario
-            ORDER BY total_liberacoes DESC
+            LEFT JOIN solicitacao s ON f.id_funcionario = s.id_autorizacao 
+                AND s.status IN ('liberado', 'concluido')
+            WHERE f.tipo = 'instrutor'
+            GROUP BY f.id_funcionario, f.nome
+            ORDER BY total_liberacoes DESC, f.nome ASC
         ")->fetchAll();
 
                 $total_geral = array_sum(array_column($stats_instrutores, 'total_liberacoes'));
