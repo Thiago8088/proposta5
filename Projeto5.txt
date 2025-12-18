@@ -78,10 +78,10 @@
 		Vermelho
 	Manter exatamente o mesmo padrão visual e estrutural dos demais cards.
 
--Esqueceu Senha
-	Input para CPF.
-	Campo de nome logo abaixo do CPF.
-	Nome deve ser preenchido automaticamente ao digitar o CPF.
+-Esqueceu Senha <-- CONCLUIDO -->
+	Input para CPF. <-- CONCLUIDO -->
+	Campo de nome logo abaixo do CPF. <-- CONCLUIDO -->
+	Nome deve ser preenchido automaticamente ao digitar o CPF. <-- CONCLUIDO -->
 
 -Permissões
 	Cancelar processo de saída.
