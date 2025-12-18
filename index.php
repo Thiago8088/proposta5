@@ -1232,18 +1232,6 @@ if ($tipo_user == 'portaria') {
                         $select_fields .= ", a.contato_empresa";
                     }
 
-                    $liberadas = $conn->query("
-                           SELECT $select_fields,
-                                  DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                                  DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
-                           FROM solicitacao s
-                           JOIN aluno a ON s.id_aluno = a.id_aluno
-                           LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
-                           LEFT JOIN turma t ON m.id_turma = t.id_turma
-                           WHERE (s.status = 'liberado' OR s.status = 'concluido')
-                           ORDER BY s.data_solicitada DESC
-                       ")->fetchAll();
-
                     if (empty($liberadas)): ?>
                         <p style="text-align:center;">Nenhuma solicitação liberada.</p>
                         <?php else:
@@ -1406,19 +1394,23 @@ if ($tipo_user == 'portaria') {
                 </div>
             </div>
         </div>
+
         <!-- HISTÓRICO POR ALUNO -->
-        <!-- Após a linha das tabs (por volta da linha 695), adicionar: -->
-        <div class="filtros-container" style="margin-bottom: 20px;">
-            <select id="filtro_turma_historico_sol" onchange="filtrarHistoricoSolicitacoes()">
-                <option value="">Todas as Turmas</option>
-                <?php foreach ($turmas as $t): ?>
-                    <option value="<?php echo $t['id_turma']; ?>">
-                        <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <?php
-            $liberadas = $conn->query("
+        <div id="historico_alunos" class="section" style="display:none;">
+            <div class="container">
+                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Histórico por Aluno</h3>
+
+                <div class="filtros-container" style="margin-bottom: 20px;">
+                    <select id="filtro_turma_historico_sol" onchange="filtrarHistoricoSolicitacoes()">
+                        <option value="">Todas as Turmas</option>
+                        <?php foreach ($turmas as $t): ?>
+                            <option value="<?php echo $t['id_turma']; ?>">
+                                <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php
+                    $liberadas = $conn->query("
              SELECT $select_fields,
              f.nome as instrutor_nome,
              DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
@@ -1431,46 +1423,11 @@ if ($tipo_user == 'portaria') {
              WHERE (s.status = 'liberado' OR s.status = 'concluido')
              ORDER BY s.data_solicitada DESC
              ")->fetchAll();
-            ?>
+                    ?>
+                </div>
 
-
-            <script>
-                function filtrarHistoricoAlunos() {
-                    const turmaId = document.getElementById('filtro_turma_historico').value;
-                    const status = document.getElementById('filtro_status_historico').value;
-                    const cards = document.querySelectorAll('.historico-aluno-card');
-
-                    cards.forEach(card => {
-                        const cardTurma = card.getAttribute('data-turma-id');
-                        const cardStatus = card.getAttribute('data-status');
-
-                        let mostrarTurma = (turmaId === "" || cardTurma === turmaId);
-                        let mostrarStatus = true;
-
-                        if (status !== "") {
-                            const statusArray = status.split(',');
-                            mostrarStatus = statusArray.includes(cardStatus);
-                        }
-
-                        card.style.display = (mostrarTurma && mostrarStatus) ? 'block' : 'none';
-                    });
-                }
-
-                function filtrarHistoricoSolicitacoes() {
-                    const turmaId = document.getElementById('filtro_turma_historico_sol').value;
-                    const cards = document.querySelectorAll('.historico-solicitacao-card');
-
-                    cards.forEach(card => {
-                        const cardTurma = card.getAttribute('data-turma-id');
-                        const mostrar = (turmaId === "" || cardTurma === turmaId);
-                        card.style.display = mostrar ? 'block' : 'none';
-                    });
-                }
-            </script>
-        </div>
-
-        <?php
-        $historico_alunos = $conn->query("
+                <?php
+                $historico_alunos = $conn->query("
             SELECT s.*, a.nome as aluno_nome, a.matricula,
                    t.id_turma, t.nome as turma_nome,
                    f.nome as instrutor_nome,
@@ -1486,94 +1443,94 @@ if ($tipo_user == 'portaria') {
             ORDER BY s.data_solicitada DESC
         ")->fetchAll();
 
-        if (empty($historico_alunos)): ?>
-            <p style="text-align:center;">Nenhum registro encontrado.</p>
-            <?php else:
-            $motivos_map = [
-                '1' => 'Consulta médica',
-                '2' => 'Consulta odontológica',
-                '3' => 'Exames médicos',
-                '4' => 'Problemas de saúde',
-                '5' => 'Solicitação da empresa',
-                '6' => 'Solicitação da família',
-                '7' => 'Viagem particular',
-                '8' => 'Viagem a trabalho',
-                '9' => 'Treinamento a trabalho'
-            ];
+                if (empty($historico_alunos)): ?>
+                    <p style="text-align:center;">Nenhum registro encontrado.</p>
+                    <?php else:
+                    $motivos_map = [
+                        '1' => 'Consulta médica',
+                        '2' => 'Consulta odontológica',
+                        '3' => 'Exames médicos',
+                        '4' => 'Problemas de saúde',
+                        '5' => 'Solicitação da empresa',
+                        '6' => 'Solicitação da família',
+                        '7' => 'Viagem particular',
+                        '8' => 'Viagem a trabalho',
+                        '9' => 'Treinamento a trabalho'
+                    ];
 
-            foreach ($historico_alunos as $al):
-                $parsed = parseMotivo($al['motivo']);
-                $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
-                    ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                $status_texto = getStatusText($al['status'], $al['motivo']);
-                $status_cor = getStatusColor($al['status'], $al['motivo']);
+                    foreach ($historico_alunos as $al):
+                        $parsed = parseMotivo($al['motivo']);
+                        $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                            ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                        $status_texto = getStatusText($al['status'], $al['motivo']);
+                        $status_cor = getStatusColor($al['status'], $al['motivo']);
 
-                $quem_recusou = '';
-                if ($al['status'] == 'rejeitada') {
-                    if (strpos($al['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
-                    elseif (strpos($al['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
-                    elseif (strpos($al['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
-                }
-            ?>
-                <div class="solicitacao-card historico-aluno-card"
-                    data-turma-id="<?php echo $al['id_turma']; ?>"
-                    data-status="<?php echo $al['status']; ?>"
-                    style="border-left: 4px solid <?php echo $status_cor; ?>;">
-                    <div class="solicitacao-header">
-                        <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
-                        <span class="status-badge" style="background: <?php echo $status_cor; ?>;">
-                            <?php echo $status_texto; ?>
-                        </span>
-                    </div>
-
-                    <div class="solicitacao-info">
-                        <div class="info-item">
-                            <strong>Turma:</strong>
-                            <?php echo htmlspecialchars($al['turma_nome'] ?? 'N/A'); ?>
-                        </div>
-                        <div class="info-item">
-                            <strong>Motivo:</strong>
-                            <?php echo htmlspecialchars($motivo_texto); ?>
-                        </div>
-                        <div class="info-item">
-                            <strong>Data Solicitação:</strong>
-                            <?php echo $al['data_solicitada_fmt']; ?>
-                        </div>
-
-                        <?php if ($al['status'] != 'rejeitada'): ?>
-                            <div class="info-item">
-                                <strong>Instrutor:</strong>
-                                <?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?>
+                        $quem_recusou = '';
+                        if ($al['status'] == 'rejeitada') {
+                            if (strpos($al['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
+                            elseif (strpos($al['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
+                            elseif (strpos($al['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
+                        }
+                    ?>
+                        <div class="solicitacao-card historico-aluno-card"
+                            data-turma-id="<?php echo $al['id_turma']; ?>"
+                            data-status="<?php echo $al['status']; ?>"
+                            style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                            <div class="solicitacao-header">
+                                <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                                <span class="status-badge" style="background: <?php echo $status_cor; ?>;">
+                                    <?php echo $status_texto; ?>
+                                </span>
                             </div>
-                            <?php if (!empty($al['hora_instrutor'])): ?>
+
+                            <div class="solicitacao-info">
                                 <div class="info-item">
-                                    <strong>Liberado em:</strong>
-                                    <?php echo $al['hora_instrutor']; ?>
+                                    <strong>Turma:</strong>
+                                    <?php echo htmlspecialchars($al['turma_nome'] ?? 'N/A'); ?>
                                 </div>
-                            <?php endif; ?>
-                            <?php if (!empty($parsed['codigo'])): ?>
                                 <div class="info-item">
-                                    <strong>Código:</strong>
-                                    <?php echo htmlspecialchars($parsed['codigo']); ?>
+                                    <strong>Motivo:</strong>
+                                    <?php echo htmlspecialchars($motivo_texto); ?>
                                 </div>
-                            <?php endif; ?>
-                            <?php if ($al['status'] == 'concluido' && !empty($al['hora_saida'])): ?>
                                 <div class="info-item">
-                                    <strong>Saída Portaria:</strong>
-                                    <?php echo $al['hora_saida']; ?>
+                                    <strong>Data Solicitação:</strong>
+                                    <?php echo $al['data_solicitada_fmt']; ?>
                                 </div>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <div class="info-item">
-                                <strong>Recusado por:</strong>
-                                <?php echo $quem_recusou; ?>
+
+                                <?php if ($al['status'] != 'rejeitada'): ?>
+                                    <div class="info-item">
+                                        <strong>Instrutor:</strong>
+                                        <?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?>
+                                    </div>
+                                    <?php if (!empty($al['hora_instrutor'])): ?>
+                                        <div class="info-item">
+                                            <strong>Liberado em:</strong>
+                                            <?php echo $al['hora_instrutor']; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($parsed['codigo'])): ?>
+                                        <div class="info-item">
+                                            <strong>Código:</strong>
+                                            <?php echo htmlspecialchars($parsed['codigo']); ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <?php if ($al['status'] == 'concluido' && !empty($al['hora_saida'])): ?>
+                                        <div class="info-item">
+                                            <strong>Saída Portaria:</strong>
+                                            <?php echo $al['hora_saida']; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <div class="info-item">
+                                        <strong>Recusado por:</strong>
+                                        <?php echo $quem_recusou; ?>
+                                    </div>
+                                <?php endif; ?>
                             </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
-        </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
         </div>
 
         <!-- ALUNOS MAIS LIBERADOS -->
