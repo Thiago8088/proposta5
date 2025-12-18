@@ -90,3 +90,6 @@ ALTER TABLE solicitacao ADD FOREIGN KEY (id_uc) REFERENCES unidade_curricular(id
 
 INSERT INTO funcionario (nome, cpf, tipo, senha_hash)
 VALUES ('Thiago Monechi', '22968899724', 'pedagógico', '(Aalxx_2025)');
+
+INSERT INTO funcionario (nome, cpf, tipo, senha_hash)
+VALUES ('Nicolas Menegardo', '16348624730', 'pedagógico', '(Aalxx_2025)');
