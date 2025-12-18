@@ -526,6 +526,23 @@ if ($tipo_user == 'pedagógico') {
         }
     }
 
+    if (isset($_POST['cancelar_saida'])) {
+        $id_solicitacao = $_POST['id_solicitacao'];
+
+        $stmt_current = $conn->prepare("SELECT motivo FROM solicitacao WHERE id_solicitacao = ?");
+        $stmt_current->execute([$id_solicitacao]);
+        $current = $stmt_current->fetch();
+        $parsed = parseMotivo($current['motivo']);
+
+        $new_motivo = buildMotivo('cancelado', $parsed['motivo']);
+
+        $stmt = $conn->prepare("UPDATE solicitacao SET status = 'cancelado', motivo = ? WHERE id_solicitacao = ?");
+        $stmt->execute([$new_motivo, $id_solicitacao]);
+
+        $msg = "Solicitação cancelada!";
+        $msg_type = "success";
+    }
+
     $total_solicitacoes = $conn->query("SELECT COUNT(*) as total FROM solicitacao")->fetch()['total'];
     $solicitacoes_pendentes = $conn->query("SELECT COUNT(*) as total FROM solicitacao WHERE status = 'solicitado'")->fetch()['total'];
     $aguardando_responsavel = $conn->query("SELECT COUNT(*) as total FROM solicitacao WHERE status = 'solicitado'")->fetch()['total'];
@@ -707,6 +724,8 @@ if ($tipo_user == 'portaria') {
                 <a href="#" onclick="showSection('aguardando_portaria'); return false;">Aguardando Portaria</a>
                 <a href="#" onclick="showSection('historico_solicitacoes'); return false;">Histórico de Solicitações</a>
                 <a href="#" onclick="showSection('historico_alunos'); return false;">Histórico por Aluno</a>
+                <a href="#" onclick="showSection('alunos_frequentes'); return false;">Alunos mais liberados</a>
+                <a href="#" onclick="showSection('instrutores_liberacoes'); return false;">Estatísticas Instrutores</a>
                 <a href="#" onclick="showSection('cursos'); return false;">Gerenciar Cursos</a>
                 <a href="#" onclick="showSection('ucs'); return false;">Gerenciar UCs</a>
                 <a href="#" onclick="showSection('turmas'); return false;">Gerenciar Turmas</a>
@@ -725,53 +744,6 @@ if ($tipo_user == 'portaria') {
         </div>
     </nav>
 
-    <?php
-$mostrar_alerta_frequencia = false;
-$msg_alerta_frequencia = '';
-
-if ($tipo_user == 'aluno') {
-    $stmt_alerta = $conn->prepare("
-        SELECT uc.carga_horaria,
-               COUNT(f.id_frequencia) as total_faltas,
-               uc.nome
-        FROM unidade_curricular uc
-        JOIN turma t ON uc.id_curso = t.id_curso
-        JOIN matricula m ON t.id_turma = m.id_turma
-        LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = m.id_aluno
-        WHERE m.id_aluno = ?
-        GROUP BY uc.id_curricular
-    ");
-    $stmt_alerta->execute([$user['id_aluno']]);
-    $ucs_alerta = $stmt_alerta->fetchAll();
-
-    foreach ($ucs_alerta as $uc) {
-        if ($uc['carga_horaria'] > 0) {
-            $perc_freq = (1 - ($uc['total_faltas'] / $uc['carga_horaria'])) * 100;
-            $perc_com_mais_uma_falta = (1 - (($uc['total_faltas'] + 1) / $uc['carga_horaria'])) * 100;
-
-            if ($perc_freq < 75) {
-                $mostrar_alerta_frequencia = true;
-                $msg_alerta_frequencia = "⚠️ Atenção! Sua frequência está abaixo de 75%. Você corre risco de reprovação.";
-                break;
-            }
-
-            if ($perc_freq >= 75 && $perc_com_mais_uma_falta < 75) {
-                $mostrar_alerta_frequencia = true;
-                $msg_alerta_frequencia = "⚠️ Atenção! Você está no limite de faltas. A próxima falta pode causar reprovação.";
-                break;
-            }
-        }
-    }
-}
-?>
-
-<?php if ($mostrar_alerta_frequencia): ?>
-    <div class="alerta-frequencia-topo">
-        <?php echo $msg_alerta_frequencia; ?>
-    </div>
-<?php endif; ?>
-
-
     <div class="main-content">
         <?php if (!empty($msg)): ?>
             <div class="msg <?php echo $msg_type; ?>">
@@ -779,7 +751,52 @@ if ($tipo_user == 'aluno') {
             </div>
         <?php endif; ?>
         <!-- ALUNO -->
-        <?php if ($tipo_user == 'aluno'): ?>
+        <?php if ($tipo_user == 'aluno'):
+            $mostrar_alerta_frequencia = false;
+            $msg_alerta_frequencia = '';
+
+            if ($tipo_user == 'aluno') {
+                $stmt_alerta = $conn->prepare("
+                    SELECT uc.carga_horaria,
+                           COUNT(f.id_frequencia) as total_faltas,
+                           uc.nome
+                    FROM unidade_curricular uc
+                    JOIN turma t ON uc.id_curso = t.id_curso
+                    JOIN matricula m ON t.id_turma = m.id_turma
+                    LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = m.id_aluno
+                    WHERE m.id_aluno = ?
+                    GROUP BY uc.id_curricular
+                ");
+                $stmt_alerta->execute([$user['id_aluno']]);
+                $ucs_alerta = $stmt_alerta->fetchAll();
+
+                foreach ($ucs_alerta as $uc) {
+                    if ($uc['carga_horaria'] > 0) {
+                        $perc_freq = (1 - ($uc['total_faltas'] / $uc['carga_horaria'])) * 100;
+                        $perc_com_mais_uma_falta = (1 - (($uc['total_faltas'] + 1) / $uc['carga_horaria'])) * 100;
+
+                        if ($perc_freq < 75) {
+                            $mostrar_alerta_frequencia = true;
+                            $msg_alerta_frequencia = "⚠️ Atenção! Sua frequência está abaixo de 75%. Você corre risco de reprovação.";
+                            break;
+                        }
+
+                        if ($perc_freq >= 75 && $perc_com_mais_uma_falta < 75) {
+                            $mostrar_alerta_frequencia = true;
+                            $msg_alerta_frequencia = "⚠️ Atenção! Você está no limite de faltas. A próxima falta pode causar reprovação.";
+                            break;
+                        }
+                    }
+                }
+            }
+        ?>
+
+            <?php if ($mostrar_alerta_frequencia): ?>
+                <div class="alerta-frequencia-topo">
+                    <?php echo $msg_alerta_frequencia; ?>
+                </div>
+            <?php endif; ?>
+
             <div id="info" class="section">
                 <div class="container">
                     <h3>Informações Pessoais</h3>
@@ -1030,12 +1047,19 @@ if ($tipo_user == 'aluno') {
                             <form method="POST" style="display: inline;">
                                 <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
                                 <input type="hidden" name="acao" value="autorizar">
-                                <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer;">Aceitar</button>
+                                <button type="submit" name="autorizar_saida">Aceitar</button>
                             </form>
                             <form method="POST" style="display: inline;">
                                 <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
                                 <input type="hidden" name="acao" value="rejeitar">
-                                <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Recusar</button>
+                                <button type="submit" name="autorizar_saida">Recusar</button>
+                            </form>
+                            <!-- NOVO BOTÃO -->
+                            <form method="POST" style="display: inline;">
+                                <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
+                                <button type="submit" name="cancelar_saida"
+                                    onclick="return confirm('Tem certeza que deseja cancelar esta solicitação?')"
+                                    style="background: #6c757d;">Cancelar</button>
                             </form>
                         </div>
                     <?php endforeach; ?>
@@ -1383,52 +1407,70 @@ if ($tipo_user == 'aluno') {
             </div>
         </div>
         <!-- HISTÓRICO POR ALUNO -->
-        <div id="historico_alunos" class="section" style="display:none;">
-            <div class="container">
-                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Histórico por Aluno/Turma</h3>
+        <!-- Após a linha das tabs (por volta da linha 695), adicionar: -->
+        <div class="filtros-container" style="margin-bottom: 20px;">
+            <select id="filtro_turma_historico_sol" onchange="filtrarHistoricoSolicitacoes()">
+                <option value="">Todas as Turmas</option>
+                <?php foreach ($turmas as $t): ?>
+                    <option value="<?php echo $t['id_turma']; ?>">
+                        <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <?php
+            $liberadas = $conn->query("
+             SELECT $select_fields,
+             f.nome as instrutor_nome,
+             DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
+             DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
+             FROM solicitacao s
+             JOIN aluno a ON s.id_aluno = a.id_aluno
+             LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+             LEFT JOIN turma t ON m.id_turma = t.id_turma
+             LEFT JOIN funcionario f ON s.id_autorizacao = f.id_funcionario
+             WHERE (s.status = 'liberado' OR s.status = 'concluido')
+             ORDER BY s.data_solicitada DESC
+             ")->fetchAll();
+            ?>
 
-                <div class="filtros-container">
-                    <select id="filtro_turma_historico" onchange="filtrarHistoricoAlunos()">
-                        <option value="">Todas as Turmas</option>
-                        <?php foreach ($turmas as $t): ?>
-                            <option value="<?php echo $t['id_turma']; ?>">
-                                <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
 
-                    <select id="filtro_status_historico" onchange="filtrarHistoricoAlunos()">
-                        <option value="">Todos os Status</option>
-                        <option value="liberado,concluido">Liberados</option>
-                        <option value="rejeitada">Recusados</option>
-                    </select>
-                </div>
+            <script>
+                function filtrarHistoricoAlunos() {
+                    const turmaId = document.getElementById('filtro_turma_historico').value;
+                    const status = document.getElementById('filtro_status_historico').value;
+                    const cards = document.querySelectorAll('.historico-aluno-card');
 
-                <script>
-                    function filtrarHistoricoAlunos() {
-                        const turmaId = document.getElementById('filtro_turma_historico').value;
-                        const status = document.getElementById('filtro_status_historico').value;
-                        const cards = document.querySelectorAll('.historico-aluno-card');
+                    cards.forEach(card => {
+                        const cardTurma = card.getAttribute('data-turma-id');
+                        const cardStatus = card.getAttribute('data-status');
 
-                        cards.forEach(card => {
-                            const cardTurma = card.getAttribute('data-turma-id');
-                            const cardStatus = card.getAttribute('data-status');
+                        let mostrarTurma = (turmaId === "" || cardTurma === turmaId);
+                        let mostrarStatus = true;
 
-                            let mostrarTurma = (turmaId === "" || cardTurma === turmaId);
-                            let mostrarStatus = true;
+                        if (status !== "") {
+                            const statusArray = status.split(',');
+                            mostrarStatus = statusArray.includes(cardStatus);
+                        }
 
-                            if (status !== "") {
-                                const statusArray = status.split(',');
-                                mostrarStatus = statusArray.includes(cardStatus);
-                            }
+                        card.style.display = (mostrarTurma && mostrarStatus) ? 'block' : 'none';
+                    });
+                }
 
-                            card.style.display = (mostrarTurma && mostrarStatus) ? 'block' : 'none';
-                        });
-                    }
-                </script>
+                function filtrarHistoricoSolicitacoes() {
+                    const turmaId = document.getElementById('filtro_turma_historico_sol').value;
+                    const cards = document.querySelectorAll('.historico-solicitacao-card');
 
-                <?php
-                $historico_alunos = $conn->query("
+                    cards.forEach(card => {
+                        const cardTurma = card.getAttribute('data-turma-id');
+                        const mostrar = (turmaId === "" || cardTurma === turmaId);
+                        card.style.display = mostrar ? 'block' : 'none';
+                    });
+                }
+            </script>
+        </div>
+
+        <?php
+        $historico_alunos = $conn->query("
             SELECT s.*, a.nome as aluno_nome, a.matricula,
                    t.id_turma, t.nome as turma_nome,
                    f.nome as instrutor_nome,
@@ -1444,95 +1486,262 @@ if ($tipo_user == 'aluno') {
             ORDER BY s.data_solicitada DESC
         ")->fetchAll();
 
-                if (empty($historico_alunos)): ?>
-                    <p style="text-align:center;">Nenhum registro encontrado.</p>
-                    <?php else:
-                    $motivos_map = [
-                        '1' => 'Consulta médica',
-                        '2' => 'Consulta odontológica',
-                        '3' => 'Exames médicos',
-                        '4' => 'Problemas de saúde',
-                        '5' => 'Solicitação da empresa',
-                        '6' => 'Solicitação da família',
-                        '7' => 'Viagem particular',
-                        '8' => 'Viagem a trabalho',
-                        '9' => 'Treinamento a trabalho'
-                    ];
+        if (empty($historico_alunos)): ?>
+            <p style="text-align:center;">Nenhum registro encontrado.</p>
+            <?php else:
+            $motivos_map = [
+                '1' => 'Consulta médica',
+                '2' => 'Consulta odontológica',
+                '3' => 'Exames médicos',
+                '4' => 'Problemas de saúde',
+                '5' => 'Solicitação da empresa',
+                '6' => 'Solicitação da família',
+                '7' => 'Viagem particular',
+                '8' => 'Viagem a trabalho',
+                '9' => 'Treinamento a trabalho'
+            ];
 
-                    foreach ($historico_alunos as $al):
-                        $parsed = parseMotivo($al['motivo']);
-                        $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
-                            ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                        $status_texto = getStatusText($al['status'], $al['motivo']);
-                        $status_cor = getStatusColor($al['status'], $al['motivo']);
+            foreach ($historico_alunos as $al):
+                $parsed = parseMotivo($al['motivo']);
+                $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']]))
+                    ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                $status_texto = getStatusText($al['status'], $al['motivo']);
+                $status_cor = getStatusColor($al['status'], $al['motivo']);
 
-                        $quem_recusou = '';
-                        if ($al['status'] == 'rejeitada') {
-                            if (strpos($al['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
-                            elseif (strpos($al['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
-                            elseif (strpos($al['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
-                        }
-                    ?>
-                        <div class="solicitacao-card historico-aluno-card"
-                            data-turma-id="<?php echo $al['id_turma']; ?>"
-                            data-status="<?php echo $al['status']; ?>"
-                            style="border-left: 4px solid <?php echo $status_cor; ?>;">
-                            <div class="solicitacao-header">
-                                <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
-                                <span class="status-badge" style="background: <?php echo $status_cor; ?>;">
-                                    <?php echo $status_texto; ?>
-                                </span>
-                            </div>
+                $quem_recusou = '';
+                if ($al['status'] == 'rejeitada') {
+                    if (strpos($al['motivo'], 'recusado_instrutor') !== false) $quem_recusou = 'Instrutor';
+                    elseif (strpos($al['motivo'], 'recusado_pedagogico') !== false) $quem_recusou = 'Pedagógico';
+                    elseif (strpos($al['motivo'], 'recusado_responsavel') !== false) $quem_recusou = 'Responsável';
+                }
+            ?>
+                <div class="solicitacao-card historico-aluno-card"
+                    data-turma-id="<?php echo $al['id_turma']; ?>"
+                    data-status="<?php echo $al['status']; ?>"
+                    style="border-left: 4px solid <?php echo $status_cor; ?>;">
+                    <div class="solicitacao-header">
+                        <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                        <span class="status-badge" style="background: <?php echo $status_cor; ?>;">
+                            <?php echo $status_texto; ?>
+                        </span>
+                    </div>
 
-                            <div class="solicitacao-info">
-                                <div class="info-item">
-                                    <strong>Turma:</strong>
-                                    <?php echo htmlspecialchars($al['turma_nome'] ?? 'N/A'); ?>
-                                </div>
-                                <div class="info-item">
-                                    <strong>Motivo:</strong>
-                                    <?php echo htmlspecialchars($motivo_texto); ?>
-                                </div>
-                                <div class="info-item">
-                                    <strong>Data Solicitação:</strong>
-                                    <?php echo $al['data_solicitada_fmt']; ?>
-                                </div>
-
-                                <?php if ($al['status'] != 'rejeitada'): ?>
-                                    <div class="info-item">
-                                        <strong>Instrutor:</strong>
-                                        <?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?>
-                                    </div>
-                                    <?php if (!empty($al['hora_instrutor'])): ?>
-                                        <div class="info-item">
-                                            <strong>Liberado em:</strong>
-                                            <?php echo $al['hora_instrutor']; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                    <?php if (!empty($parsed['codigo'])): ?>
-                                        <div class="info-item">
-                                            <strong>Código:</strong>
-                                            <?php echo htmlspecialchars($parsed['codigo']); ?>
-                                        </div>
-                                    <?php endif; ?>
-                                    <?php if ($al['status'] == 'concluido' && !empty($al['hora_saida'])): ?>
-                                        <div class="info-item">
-                                            <strong>Saída Portaria:</strong>
-                                            <?php echo $al['hora_saida']; ?>
-                                        </div>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <div class="info-item">
-                                        <strong>Recusado por:</strong>
-                                        <?php echo $quem_recusou; ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
+                    <div class="solicitacao-info">
+                        <div class="info-item">
+                            <strong>Turma:</strong>
+                            <?php echo htmlspecialchars($al['turma_nome'] ?? 'N/A'); ?>
                         </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
+                        <div class="info-item">
+                            <strong>Motivo:</strong>
+                            <?php echo htmlspecialchars($motivo_texto); ?>
+                        </div>
+                        <div class="info-item">
+                            <strong>Data Solicitação:</strong>
+                            <?php echo $al['data_solicitada_fmt']; ?>
+                        </div>
+
+                        <?php if ($al['status'] != 'rejeitada'): ?>
+                            <div class="info-item">
+                                <strong>Instrutor:</strong>
+                                <?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?>
+                            </div>
+                            <?php if (!empty($al['hora_instrutor'])): ?>
+                                <div class="info-item">
+                                    <strong>Liberado em:</strong>
+                                    <?php echo $al['hora_instrutor']; ?>
+                                </div>
+                            <?php endif; ?>
+                            <?php if (!empty($parsed['codigo'])): ?>
+                                <div class="info-item">
+                                    <strong>Código:</strong>
+                                    <?php echo htmlspecialchars($parsed['codigo']); ?>
+                                </div>
+                            <?php endif; ?>
+                            <?php if ($al['status'] == 'concluido' && !empty($al['hora_saida'])): ?>
+                                <div class="info-item">
+                                    <strong>Saída Portaria:</strong>
+                                    <?php echo $al['hora_saida']; ?>
+                                </div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <div class="info-item">
+                                <strong>Recusado por:</strong>
+                                <?php echo $quem_recusou; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+        </div>
+        </div>
+
+        <!-- ALUNOS MAIS LIBERADOS -->
+        <div id="alunos_frequentes" class="section" style="display:none;">
+            <div class="container">
+                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Alunos com Saídas Frequentes</h3>
+
+                <div class="filtros-container">
+                    <select id="filtro_risco" onchange="filtrarAlunosRisco()">
+                        <option value="">Todos</option>
+                        <option value="frequente">Saem com Frequência</option>
+                        <option value="risco">Risco de Reprovação</option>
+                        <option value="reprovado">Já Reprovados</option>
+                    </select>
+                </div>
+
+                <?php
+                // Buscar alunos com múltiplas saídas
+                $alunos_frequentes = $conn->query("
+            SELECT a.id_aluno, a.nome, a.matricula, t.nome as turma_nome,
+                   COUNT(s.id_solicitacao) as total_saidas,
+                   GROUP_CONCAT(DISTINCT uc.id_curricular) as ucs_ids
+            FROM aluno a
+            JOIN solicitacao s ON a.id_aluno = s.id_aluno
+            LEFT JOIN matricula m ON a.id_aluno = m.id_aluno
+            LEFT JOIN turma t ON m.id_turma = t.id_turma
+            LEFT JOIN unidade_curricular uc ON s.id_uc = uc.id_curricular
+            WHERE s.status IN ('liberado', 'concluido')
+            GROUP BY a.id_aluno
+            HAVING total_saidas >= 3
+            ORDER BY total_saidas DESC
+        ")->fetchAll();
+
+                foreach ($alunos_frequentes as $aluno):
+                    // Calcular frequência
+                    $frequencia_status = 'ok';
+                    $uc_ids = explode(',', $aluno['ucs_ids']);
+
+                    foreach ($uc_ids as $uc_id) {
+                        if (empty($uc_id)) continue;
+
+                        $stmt_freq = $conn->prepare("
+                    SELECT uc.carga_horaria, COUNT(f.id_frequencia) as total_faltas
+                    FROM unidade_curricular uc
+                    LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = ?
+                    WHERE uc.id_curricular = ?
+                ");
+                        $stmt_freq->execute([$aluno['id_aluno'], $uc_id]);
+                        $freq_data = $stmt_freq->fetch();
+
+                        if ($freq_data) {
+                            $perc_freq = $freq_data['carga_horaria'] > 0
+                                ? (1 - ($freq_data['total_faltas'] / $freq_data['carga_horaria'])) * 100
+                                : 100;
+
+                            if ($perc_freq < 75) {
+                                $frequencia_status = 'reprovado';
+                                break;
+                            } elseif ($perc_freq < 80) {
+                                $frequencia_status = 'risco';
+                            }
+                        }
+                    }
+                ?>
+                    <div class="aluno-frequente-card"
+                        data-risco="<?php echo $frequencia_status; ?>"
+                        data-frequencia="frequente"
+                        style="background: white; padding: 20px; margin-bottom: 15px; border-radius: 8px; 
+                        border-left: 4px solid <?php echo $frequencia_status == 'reprovado' ? '#dc3545' : ($frequencia_status == 'risco' ? '#ffc107' : '#28a745'); ?>;">
+                        <h4><?php echo htmlspecialchars($aluno['nome']); ?> (<?php echo htmlspecialchars($aluno['matricula']); ?>)</h4>
+                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($aluno['turma_nome']); ?></p>
+                        <p><strong>Total de Saídas:</strong> <?php echo $aluno['total_saidas']; ?></p>
+                        <p><strong>Status:</strong>
+                            <span style="color: <?php echo $frequencia_status == 'reprovado' ? '#dc3545' : ($frequencia_status == 'risco' ? '#ffc107' : '#28a745'); ?>; font-weight: bold;">
+                                <?php
+                                echo $frequencia_status == 'reprovado' ? 'Reprovado' : ($frequencia_status == 'risco' ? 'Risco de Reprovação' : 'Normal');
+                                ?>
+                            </span>
+                        </p>
+                    </div>
+                <?php endforeach; ?>
             </div>
         </div>
+
+        <script>
+            function filtrarAlunosRisco() {
+                const filtro = document.getElementById('filtro_risco').value;
+                const cards = document.querySelectorAll('.aluno-frequente-card');
+
+                cards.forEach(card => {
+                    let mostrar = false;
+
+                    if (filtro === "") {
+                        mostrar = true;
+                    } else if (filtro === "frequente") {
+                        mostrar = card.getAttribute('data-frequencia') === 'frequente';
+                    } else {
+                        mostrar = card.getAttribute('data-risco') === filtro;
+                    }
+
+                    card.style.display = mostrar ? 'block' : 'none';
+                });
+            }
+        </script>
+
+        <!-- INSTRUTORES MAIS LIBERAÇÕES -->
+        <div id="instrutores_liberacoes" class="section" style="display:none;">
+            <div class="container">
+                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Instrutores com Mais Alunos Liberados</h3>
+
+                <div class="filtros-container">
+                    <select id="filtro_instrutor" onchange="filtrarPorInstrutor()">
+                        <option value="">Todos os Instrutores</option>
+                        <?php
+                        $instrutores = $conn->query("SELECT DISTINCT f.id_funcionario, f.nome 
+                    FROM funcionario f 
+                    JOIN solicitacao s ON f.id_funcionario = s.id_autorizacao 
+                    WHERE f.tipo = 'instrutor' AND s.status IN ('liberado', 'concluido')
+                    ORDER BY f.nome")->fetchAll();
+
+                        foreach ($instrutores as $inst): ?>
+                            <option value="<?php echo $inst['id_funcionario']; ?>">
+                                <?php echo htmlspecialchars($inst['nome']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <?php
+                $stats_instrutores = $conn->query("
+            SELECT f.id_funcionario, f.nome, COUNT(s.id_solicitacao) as total_liberacoes
+            FROM funcionario f
+            JOIN solicitacao s ON f.id_funcionario = s.id_autorizacao
+            WHERE f.tipo = 'instrutor' AND s.status IN ('liberado', 'concluido')
+            GROUP BY f.id_funcionario
+            ORDER BY total_liberacoes DESC
+        ")->fetchAll();
+
+                $total_geral = array_sum(array_column($stats_instrutores, 'total_liberacoes'));
+
+                foreach ($stats_instrutores as $stat):
+                    $percentual = $total_geral > 0 ? ($stat['total_liberacoes'] / $total_geral) * 100 : 0;
+                ?>
+                    <div class="instrutor-stat-card" data-instrutor-id="<?php echo $stat['id_funcionario']; ?>"
+                        style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h4><?php echo htmlspecialchars($stat['nome']); ?></h4>
+                        <p><strong>Total de Liberações:</strong> <?php echo $stat['total_liberacoes']; ?></p>
+                        <p><strong>Percentual:</strong> <?php echo number_format($percentual, 1); ?>%</p>
+
+                        <div style="background: #e9ecef; border-radius: 10px; height: 30px; overflow: hidden; margin-top: 10px;">
+                            <div style="background: #007bff; height: 100%; width: <?php echo $percentual; ?>%; transition: width 0.3s ease;"></div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <script>
+            function filtrarPorInstrutor() {
+                const instrutorId = document.getElementById('filtro_instrutor').value;
+                const cards = document.querySelectorAll('.instrutor-stat-card');
+
+                cards.forEach(card => {
+                    const mostrar = (instrutorId === "" || card.getAttribute('data-instrutor-id') === instrutorId);
+                    card.style.display = mostrar ? 'block' : 'none';
+                });
+            }
+        </script>
 
         <!-- GERENCIAR CURSOS -->
         <div id="cursos" class="section" style="display:none;">

@@ -42,6 +42,7 @@
 		Instrutor que liberou o aluno a sair da sala
 	Remover o texto “N/A -” antes dos telefones, exibindo apenas o número.
 
+<-- pedagógico -->
 -Histórico de Solicitações
 	Adicionar filtro por turma.
 	No card de cada aluno, exibir o nome do instrutor que liberou o aluno.

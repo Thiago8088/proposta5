@@ -164,11 +164,10 @@ body {
     padding: 15px 20px;
     border-radius: 8px;
     font-weight: bold;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
     z-index: 9999;
     max-width: 350px;
 }
-
 
 @keyframes fadeIn {
     from {

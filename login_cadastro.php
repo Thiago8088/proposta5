@@ -9,9 +9,51 @@ $msg_reset = "";
 $msg_type = "";
 $tela_atual = "login";
 $dados_formulario = [];
+$nome_aluno = "";
+
+// BUSCAR NOME POR CPF (AJAX ou POST) - COLOCAR AQUI NO INÍCIO
+if (isset($_POST['buscar_nome_reset'])) {
+    $cpf_busca = isset($_POST['cpf_busca']) ? $_POST['cpf_busca'] : '';
+    $cpf_limpo = limparCPF($cpf_busca);
+    $cpf_formatado = formatarCPF($cpf_limpo);
+
+    $nome_encontrado = '';
+
+    // Buscar em alunos
+    try {
+        $stmt = $conn->prepare("SELECT nome FROM aluno WHERE cpf = ? OR cpf = ? LIMIT 1");
+        $stmt->execute([$cpf_formatado, $cpf_limpo]);
+        $resultado = $stmt->fetch();
+
+        if ($resultado) {
+            $nome_encontrado = $resultado['nome'];
+        }
+    } catch (PDOException $e) {
+        error_log("Erro ao buscar nome do aluno: " . $e->getMessage());
+    }
+
+    // Se não encontrou em alunos, buscar em funcionários
+    if (empty($nome_encontrado)) {
+        try {
+            $stmt = $conn->prepare("SELECT nome FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
+            $stmt->execute([$cpf_formatado, $cpf_limpo]);
+            $resultado = $stmt->fetch();
+
+            if ($resultado) {
+                $nome_encontrado = $resultado['nome'];
+            }
+        } catch (PDOException $e) {
+            error_log("Erro ao buscar nome do funcionário: " . $e->getMessage());
+        }
+    }
+
+    echo json_encode(['nome' => $nome_encontrado]);
+    exit;
+}
 
 // CADASTRO ALUNO 
 if (isset($_POST['cadastrar_aluno'])) {
+    // ... resto do código continua igual
     $tela_atual = "cadastro_aluno";
 
     $dados_formulario = [
@@ -83,6 +125,61 @@ if (isset($_POST['cadastrar_aluno'])) {
                 $erros[] = "É necessário ter pelo menos 14 anos para se cadastrar";
             }
         }
+    }
+
+    if (isset($_POST['buscar_cpf'])) {
+        $cpf = limparCPF($_POST['cpf']);
+
+        $stmt = $conn->prepare("SELECT nome FROM aluno WHERE cpf = ?");
+        $stmt->execute([formatarCPF($cpf)]);
+        $aluno = $stmt->fetch();
+
+        if ($aluno) {
+            $nome_aluno = $aluno['nome'];
+        } else {
+            $msg = "CPF não encontrado!";
+            $msg_type = "error";
+        }
+    }
+
+    // BUSCAR NOME POR CPF (AJAX ou POST)
+    if (isset($_POST['buscar_nome_reset'])) {
+        $cpf_busca = isset($_POST['cpf_busca']) ? $_POST['cpf_busca'] : '';
+        $cpf_limpo = limparCPF($cpf_busca);
+        $cpf_formatado = formatarCPF($cpf_limpo);
+
+        $nome_encontrado = '';
+
+        // Buscar em alunos
+        try {
+            $stmt = $conn->prepare("SELECT nome FROM aluno WHERE cpf = ? OR cpf = ? LIMIT 1");
+            $stmt->execute([$cpf_formatado, $cpf_limpo]);
+            $resultado = $stmt->fetch();
+
+            if ($resultado) {
+                $nome_encontrado = $resultado['nome'];
+            }
+        } catch (PDOException $e) {
+            error_log("Erro ao buscar nome do aluno: " . $e->getMessage());
+        }
+
+        // Se não encontrou em alunos, buscar em funcionários
+        if (empty($nome_encontrado)) {
+            try {
+                $stmt = $conn->prepare("SELECT nome FROM funcionario WHERE cpf = ? OR cpf = ? LIMIT 1");
+                $stmt->execute([$cpf_formatado, $cpf_limpo]);
+                $resultado = $stmt->fetch();
+
+                if ($resultado) {
+                    $nome_encontrado = $resultado['nome'];
+                }
+            } catch (PDOException $e) {
+                error_log("Erro ao buscar nome do funcionário: " . $e->getMessage());
+            }
+        }
+
+        echo json_encode(['nome' => $nome_encontrado]);
+        exit;
     }
 
     if (empty($erros)) {
@@ -435,6 +532,39 @@ if (isset($_POST['reset_senha'])) {
             html += '</ul></div>';
             container.innerHTML = html;
         }
+
+        function buscarNomePorCPF(cpf) {
+            const cpfLimpo = cpf.replace(/\D/g, '');
+            const campoNome = document.getElementById('nome_usuario_reset');
+
+            // Só busca quando o CPF tiver 11 dígitos
+            if (cpfLimpo.length === 11) {
+                fetch('login_cadastro.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: 'buscar_nome_reset=1&cpf_busca=' + encodeURIComponent(cpf)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.nome) {
+                            campoNome.value = data.nome;
+                            campoNome.style.color = '#000';
+                        } else {
+                            campoNome.value = 'CPF não encontrado';
+                            campoNome.style.color = '#000';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro:', error);
+                        campoNome.value = 'Erro ao buscar';
+                        campoNome.style.color = '#dc3545';
+                    });
+            } else {
+                campoNome.value = '';
+            }
+        }
     </script>
 </head>
 
@@ -514,19 +644,39 @@ if (isset($_POST['reset_senha'])) {
                 <p class="toggle" onclick="mostrar('login')">Voltar ao Login</p>
             </div>
 
-            <!-- RESETARUsuário não encontrado. Verifique sua matrícula ou CPF. SENHA -->
+            <!-- RESETAR SENHA -->
             <div id="reset_senha" class="form-section" style="display: <?= $tela_atual == 'reset_senha' ? 'block' : 'none' ?>;">
                 <?php if (!empty($msg_reset)) : ?>
                     <div class="msg <?= $msg_type ?>"><?= $msg_reset ?></div>
                 <?php endif; ?>
 
                 <form method="POST">
-                    <input type="text" name="identificador" placeholder="Matrícula ou CPF" value="<?= isset($dados_formulario['identificador']) ? htmlspecialchars($dados_formulario['identificador']) : '' ?>" required>
+                    <input type="text"
+                        name="identificador"
+                        id="cpf_reset"
+                        placeholder="CPF"
+                        onkeyup="formatarCPFInput(this); buscarNomePorCPF(this.value);"
+                        maxlength="14"
+                        value="<?= isset($dados_formulario['identificador']) ? htmlspecialchars($dados_formulario['identificador']) : '' ?>"
+                        required>
 
-                    <input type="password" name="nova_senha" placeholder="Nova Senha" onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-reset')" required>
+                    <input type="text"
+                        id="nome_usuario_reset"
+                        placeholder="Nome do Usuário"
+                        readonly
+                        style="cursor: not-allowed;">
+
+                    <input type="password"
+                        name="nova_senha"
+                        placeholder="Nova Senha"
+                        onkeyup="validarSenhaVisual(this.value, 'requisitos-senha-reset')"
+                        required>
                     <div id="requisitos-senha-reset"></div>
 
-                    <input type="password" name="repetir_senha" placeholder="Repetir Nova Senha" required>
+                    <input type="password"
+                        name="repetir_senha"
+                        placeholder="Repetir Nova Senha"
+                        required>
 
                     <button type="submit" name="reset_senha">Salvar Nova Senha</button>
                 </form>
