@@ -169,6 +169,7 @@ body {
     max-width: 350px;
 }
 
+
 @keyframes fadeIn {
     from {
         opacity: 0;

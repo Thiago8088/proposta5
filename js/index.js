@@ -175,3 +175,35 @@ function carregarTurmasPorCurso(idCurso) {
             selectTurma.innerHTML = '<option value="">Erro ao carregar turmas</option>';
         });
 }
+
+function filtrarHistoricoAlunos() {
+    const turmaId = document.getElementById('filtro_turma_historico').value;
+    const status = document.getElementById('filtro_status_historico').value;
+    const cards = document.querySelectorAll('.historico-aluno-card');
+
+    cards.forEach(card => {
+        const cardTurma = card.getAttribute('data-turma-id');
+        const cardStatus = card.getAttribute('data-status');
+
+        let mostrarTurma = (turmaId === "" || cardTurma === turmaId);
+        let mostrarStatus = true;
+
+        if (status !== "") {
+            const statusArray = status.split(',');
+            mostrarStatus = statusArray.includes(cardStatus);
+        }
+
+        card.style.display = (mostrarTurma && mostrarStatus) ? 'block' : 'none';
+    });
+}
+
+function filtrarHistoricoSolicitacoes() {
+    const turmaId = document.getElementById('filtro_turma_historico_sol').value;
+    const cards = document.querySelectorAll('.historico-solicitacao-card');
+
+    cards.forEach(card => {
+        const cardTurma = card.getAttribute('data-turma-id');
+        const mostrar = (turmaId === "" || cardTurma === turmaId);
+        card.style.display = mostrar ? 'block' : 'none';
+    });
+}
