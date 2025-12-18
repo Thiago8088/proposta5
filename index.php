@@ -1123,11 +1123,16 @@ if ($tipo_user == 'portaria') {
 
                             <div class="action-buttons">
                                 <?php if ($eh_maior): ?>
-                                    <form method="POST" style="display: inline;">
+                                    <form method="POST" style="display:none;" id="auto_<?php echo $s['id_solicitacao']; ?>">
                                         <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
                                         <input type="hidden" name="acao" value="autorizar">
-                                        <button type="submit" name="autorizar_saida" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 5px; cursor: pointer;">Aluno é Maior de Idade</button>
+                                        <input type="hidden" name="autorizar_saida" value="1">
                                     </form>
+                                    <p style="color:#17a2b8; font-weight:bold;">Aluno é maior de idade e deseja ir embora</p>
+                                    <script>
+                                        document.getElementById('auto_<?php echo $s['id_solicitacao']; ?>').submit();
+                                    </script>
+
                                 <?php else: ?>
                                     <form method="POST" style="display: inline;">
                                         <input type="hidden" name="id_solicitacao" value="<?php echo $s['id_solicitacao']; ?>">
