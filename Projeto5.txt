@@ -86,3 +86,18 @@
 -Permissões
 	Cancelar processo de saída.
 	Rejeitar saída caso o aluno desista, gerando cancelamento automático no pedagógico.
+
+
+
+
+
+
+
+
+	git checkout -b Thiago
+	git push origin Thiago
+
+
+	git checkout -b Nicolas
+	git push origin Nicolas
+
