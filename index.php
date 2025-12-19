@@ -207,10 +207,14 @@ $msg_type = "";
 
 if (isset($_POST['solicitar_saida'])) {
     $motivo = $_POST['motivo'];
+    $turno = $_POST['turno'];
     $motivo_outro = isset($_POST['motivo_outro']) ? LimpaPost($_POST['motivo_outro']) : '';
 
     if (empty($motivo)) {
         $msg = "Selecione o motivo da solicitação!";
+        $msg_type = "error";
+    } elseif (empty($turno)) {
+        $msg = "Selecione o turno!";
         $msg_type = "error";
     } elseif ($motivo == '10' && empty($motivo_outro)) {
         $msg = "Descreva o motivo da saída!";
@@ -220,9 +224,8 @@ if (isset($_POST['solicitar_saida'])) {
         $motivo_completo = buildMotivo('aguardando_instrutor', $motivo_final);
 
         try {
-            // CORRIGIDO: Removido data_solicitada do VALUES
-            $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, motivo, data_solicitada, status) VALUES (?, ?, NOW(), 'solicitado')");
-            $stmt->execute([$user['id_aluno'], $motivo_completo]);
+            $stmt = $conn->prepare("INSERT INTO solicitacao (id_aluno, motivo, data_solicitada, status, turno) VALUES (?, ?, NOW(), 'solicitado', ?)");
+            $stmt->execute([$user['id_aluno'], $motivo_completo, $turno]);
             $msg = "Solicitação enviada com sucesso! Aguarde aprovação.";
             $msg_type = "success";
 
@@ -234,8 +237,6 @@ if (isset($_POST['solicitar_saida'])) {
             $msg_type = "error";
         }
     }
-
-    $ucs = $conn->query("SELECT uc.* FROM unidade_curricular uc JOIN turma t ON uc.id_curso = t.id_curso JOIN matricula m ON t.id_turma = m.id_turma WHERE m.id_aluno = " . $user['id_aluno'])->fetchAll();
 }
 
 
@@ -258,8 +259,8 @@ if ($tipo_user == 'pedagógico') {
             if ($acao == 'autorizar') {
                 // Move to aguardando_responsavel
                 $new_motivo = buildMotivo('aguardando_responsavel', $original_motivo);
-                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', motivo = ?, id_autorizacao = ? WHERE id_solicitacao = ?");
-                $stmt->execute([$new_motivo, $user['id_funcionario'], $id_solicitacao]);
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', motivo = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $id_solicitacao]);
                 $msg = "Solicitação aceita! Aguardando responsável.";
                 $msg_type = "success";
             } else {
@@ -565,11 +566,12 @@ if ($tipo_user == 'instrutor') {
         $id_aluno = $_POST['id_aluno'];
         $id_uc = isset($_POST['id_uc']) ? $_POST['id_uc'] : null;
 
-        $stmt_current = $conn->prepare("SELECT motivo FROM solicitacao WHERE id_solicitacao = ?");
+        $stmt_current = $conn->prepare("SELECT motivo, turno FROM solicitacao WHERE id_solicitacao = ?");
         $stmt_current->execute([$id_solicitacao]);
-        $current_motivo_raw = $stmt_current->fetchColumn();
-        $parsed = parseMotivo($current_motivo_raw);
+        $current = $stmt_current->fetch();
+        $parsed = parseMotivo($current['motivo']);
         $original_motivo = $parsed['motivo'];
+        $turno = $current['turno'];
 
         if ($acao == 'autorizar') {
             if (empty($id_uc)) {
@@ -577,22 +579,25 @@ if ($tipo_user == 'instrutor') {
                 $msg_type = "error";
             } else {
                 $new_motivo = buildMotivo('aguardando_pedagogico', $original_motivo);
-
-                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', data_autorizada = NOW(), motivo = ?, id_uc = ? WHERE id_solicitacao = ?");
-                $stmt->execute([$new_motivo, $id_uc, $id_solicitacao]);
-
-                // Registrar falta
                 $hora_saida = date('H:i:s');
 
-                // Verificar se a tabela frequencia existe
+                // Calcular quantas aulas foram perdidas
+                $aulas_perdidas = calcularAulasPerdidas($hora_saida, $turno);
+
+                $stmt = $conn->prepare("UPDATE solicitacao SET status = 'autorizado', data_autorizada = NOW(), motivo = ?, id_uc = ?, id_autorizacao = ? WHERE id_solicitacao = ?");
+                $stmt->execute([$new_motivo, $id_uc, $user['id_funcionario'], $id_solicitacao]);
+
+                // Registrar faltas baseado nas aulas perdidas
                 try {
-                    $stmt_falta = $conn->prepare("INSERT INTO frequencia (id_aluno, id_uc, data_falta, hora_saida, tipo) VALUES (?, ?, CURDATE(), ?, 'saida_antecipada')");
-                    $stmt_falta->execute([$id_aluno, $id_uc, $hora_saida]);
+                    for ($i = 0; $i < $aulas_perdidas; $i++) {
+                        $stmt_falta = $conn->prepare("INSERT INTO frequencia (id_aluno, id_uc, data_falta, hora_saida, tipo, turno) VALUES (?, ?, CURDATE(), ?, 'saida_antecipada', ?)");
+                        $stmt_falta->execute([$id_aluno, $id_uc, $hora_saida, $turno]);
+                    }
                 } catch (PDOException $e) {
                     error_log("Erro ao registrar falta: " . $e->getMessage());
                 }
 
-                $msg = "Solicitação autorizada! Aguardando pedagógico.";
+                $msg = "Solicitação autorizada! " . $aulas_perdidas . " aula(s) registrada(s) como falta. Aguardando pedagógico.";
                 $msg_type = "success";
             }
         } else {
@@ -684,6 +689,80 @@ if ($tipo_user == 'portaria') {
         }
     }
 }
+
+function calcularAulasPerdidas($hora_saida, $turno)
+{
+    $aulas_perdidas = 0;
+
+    if ($turno == 'manhã') {
+        // Manhã: 7:20-8:10, 8:10-9:00, 9:20-10:10, 10:10-11:00
+        $horarios = [
+            ['inicio' => '07:20', 'fim' => '08:10', 'aula' => 1],
+            ['inicio' => '08:10', 'fim' => '09:00', 'aula' => 2],
+            ['inicio' => '09:20', 'fim' => '10:10', 'aula' => 3],
+            ['inicio' => '10:10', 'fim' => '11:00', 'aula' => 4]
+        ];
+    } elseif ($turno == 'tarde') {
+        // Tarde: 13:30-14:20, 14:20-15:10, 15:30-16:20, 16:20-17:10
+        $horarios = [
+            ['inicio' => '13:30', 'fim' => '14:20', 'aula' => 1],
+            ['inicio' => '14:20', 'fim' => '15:10', 'aula' => 2],
+            ['inicio' => '15:30', 'fim' => '16:20', 'aula' => 3],
+            ['inicio' => '16:20', 'fim' => '17:10', 'aula' => 4]
+        ];
+    } else { // noite
+        // Noite: 18:30-19:20, 19:20-20:10, 20:20-21:10, 21:10-22:00
+        $horarios = [
+            ['inicio' => '18:30', 'fim' => '19:20', 'aula' => 1],
+            ['inicio' => '19:20', 'fim' => '20:10', 'aula' => 2],
+            ['inicio' => '20:20', 'fim' => '21:10', 'aula' => 3],
+            ['inicio' => '21:10', 'fim' => '22:00', 'aula' => 4]
+        ];
+    }
+
+    foreach ($horarios as $horario) {
+        $inicio = strtotime($horario['inicio']);
+        $fim = strtotime($horario['fim']);
+        $saida = strtotime($hora_saida);
+
+        // Se saiu durante a aula
+        if ($saida >= $inicio && $saida < $fim) {
+            $tempo_presente = $saida - $inicio;
+            $duracao_aula = $fim - $inicio;
+            $percentual_presente = ($tempo_presente / $duracao_aula) * 100;
+
+            // Se assistiu menos de 75% da aula, conta como falta
+            if ($percentual_presente < 75) {
+                $aulas_perdidas++;
+            }
+            // Todas as aulas seguintes são perdidas
+            $aulas_perdidas += (4 - $horario['aula']);
+            break;
+        }
+        // Se saiu antes da aula começar
+        elseif ($saida < $inicio) {
+            $aulas_perdidas += (4 - $horario['aula'] + 1);
+            break;
+        }
+    }
+
+    return $aulas_perdidas;
+}
+
+function getTurnoAtual()
+{
+    $hora_atual = date('H:i');
+
+    if ($hora_atual >= '07:20' && $hora_atual <= '11:20') {
+        return 'manhã';
+    } elseif ($hora_atual >= '13:30' && $hora_atual <= '17:30') {
+        return 'tarde';
+    } elseif ($hora_atual >= '18:30' && $hora_atual <= '22:00') {
+        return 'noite';
+    }
+
+    return null;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -726,6 +805,7 @@ if ($tipo_user == 'portaria') {
                 <a href="#" onclick="showSection('historico_alunos'); return false;">Histórico por Aluno</a>
                 <a href="#" onclick="showSection('alunos_frequentes'); return false;">Alunos mais liberados</a>
                 <a href="#" onclick="showSection('instrutores_liberacoes'); return false;">Estatísticas Instrutores</a>
+                <a href="#" onclick="showSection('turmas_alunos_liberados'); return false;">Turmas com Alunos Liberados</a>
                 <a href="#" onclick="showSection('cursos'); return false;">Gerenciar Cursos</a>
                 <a href="#" onclick="showSection('ucs'); return false;">Gerenciar UCs</a>
                 <a href="#" onclick="showSection('turmas'); return false;">Gerenciar Turmas</a>
@@ -866,18 +946,20 @@ if ($tipo_user == 'portaria') {
             <div id="frequencia" class="section" style="display:none;">
                 <div class="container">
                     <h3>Minha Frequência</h3>
-
                     <?php
                     $stmt_ucs_aluno = $conn->prepare("
-    SELECT uc.id_curricular, uc.nome, uc.carga_horaria,
-           COUNT(f.id_frequencia) as total_faltas
-    FROM unidade_curricular uc
-    JOIN turma t ON uc.id_curso = t.id_curso
-    JOIN matricula m ON t.id_turma = m.id_turma
-    LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = m.id_aluno
-    WHERE m.id_aluno = ?
-    GROUP BY uc.id_curricular
-");
+            SELECT uc.id_curricular, uc.nome, uc.carga_horaria,
+                   COUNT(CASE WHEN f.turno = 'manhã' THEN 1 END) as faltas_manha,
+                   COUNT(CASE WHEN f.turno = 'tarde' THEN 1 END) as faltas_tarde,
+                   COUNT(CASE WHEN f.turno = 'noite' THEN 1 END) as faltas_noite,
+                   COUNT(f.id_frequencia) as total_faltas
+            FROM unidade_curricular uc
+            JOIN turma t ON uc.id_curso = t.id_curso
+            JOIN matricula m ON t.id_turma = m.id_turma
+            LEFT JOIN frequencia f ON uc.id_curricular = f.id_uc AND f.id_aluno = m.id_aluno
+            WHERE m.id_aluno = ?
+            GROUP BY uc.id_curricular
+        ");
                     $stmt_ucs_aluno->execute([$user['id_aluno']]);
                     $ucs_aluno = $stmt_ucs_aluno->fetchAll();
 
@@ -899,81 +981,124 @@ if ($tipo_user == 'portaria') {
                         <?php foreach ($ucs_aluno as $uc):
                             $total_faltas = $uc['total_faltas'];
                             $carga_horaria = $uc['carga_horaria'];
-                            $perc_freq = $carga_horaria > 0 ? (1 - ($total_faltas / $carga_horaria)) * 100 : 100;
+
+                            // Cada aula = 50 minutos = 0.833 horas
+                            $horas_faltadas = ($total_faltas * 50) / 60;
+                            $perc_freq = $carga_horaria > 0 ? (1 - ($horas_faltadas / $carga_horaria)) * 100 : 100;
                             $perc_freq = max(0, min(100, $perc_freq));
 
                             $pode_sair = $perc_freq >= 75;
-                            $proxima_falta_reprova = false;
 
-                            if ($carga_horaria > 0) {
-                                $perc_com_mais_uma_falta = (1 - (($total_faltas + 1) / $carga_horaria)) * 100;
-                                $proxima_falta_reprova = $perc_com_mais_uma_falta < 75;
-                            }
+                            // Calcular se a próxima falta reprova (considerando 1 aula = 50min)
+                            $horas_com_mais_uma = $horas_faltadas + (50 / 60);
+                            $perc_com_mais_uma = $carga_horaria > 0 ? (1 - ($horas_com_mais_uma / $carga_horaria)) * 100 : 100;
+                            $proxima_falta_reprova = $perc_com_mais_uma < 75;
 
                             $cor_grafico = $perc_freq >= 75 ? '#28a745' : '#dc3545';
                             if ($pode_sair && $proxima_falta_reprova) $cor_grafico = '#ffc107';
                         ?>
-                            <div class="frequencia-uc-card" data-uc-id="<?php echo $uc['id_curricular']; ?>" style="display: none; border: 2px solid #ddd; border-radius: 8px; padding: 20px; background: white;">
-                                <h4 style="margin-bottom: 15px; color: #333;"><?php echo htmlspecialchars($uc['nome']); ?></h4>
+                            <div class="frequencia-uc-card" data-uc-id="<?php echo $uc['id_curricular']; ?>"
+                                style="display: none; border: 2px solid #ddd; border-radius: 8px; padding: 20px; background: white; margin-bottom: 20px;">
 
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
-                                    <div>
-                                        <p><strong>Carga Horária:</strong> <?php echo $carga_horaria; ?>h</p>
-                                        <p><strong>Total de Faltas:</strong> <?php echo $total_faltas; ?></p>
+                                <h4 style="margin-bottom: 20px; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px;">
+                                    <?php echo htmlspecialchars($uc['nome']); ?>
+                                </h4>
+
+                                <!-- INFORMAÇÕES PRINCIPAIS -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
+                                    <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center;">
+                                        <p style="margin: 0 0 5px 0; color: #666; font-size: 0.9em;">Carga Horária Total</p>
+                                        <p style="margin: 0; font-size: 1.8em; font-weight: bold; color: #007bff;">
+                                            <?php echo $carga_horaria; ?>h
+                                        </p>
                                     </div>
-                                    <div>
-                                        <p><strong>Frequência:</strong>
-                                            <span style="font-size: 2em; font-weight: bold; color: <?php echo $cor_grafico; ?>;">
-                                                <?php echo number_format($perc_freq, 1); ?>%
-                                            </span>
+
+                                    <div style="background: #fff3cd; padding: 15px; border-radius: 5px; text-align: center; border: 2px solid #ffc107;">
+                                        <p style="margin: 0 0 5px 0; color: #856404; font-size: 0.9em; font-weight: bold;">Total de Faltas</p>
+                                        <p style="margin: 0; font-size: 1.8em; font-weight: bold; color: #856404;">
+                                            <?php echo $total_faltas; ?> aulas
+                                        </p>
+                                        <p style="margin: 5px 0 0 0; font-size: 0.8em; color: #856404;">
+                                            (<?php echo number_format($horas_faltadas, 2); ?>h)
+                                        </p>
+                                    </div>
+
+                                    <div style="background: <?php echo $perc_freq >= 75 ? '#d4edda' : '#f8d7da'; ?>; 
+                                    padding: 15px; border-radius: 5px; text-align: center; 
+                                    border: 2px solid <?php echo $cor_grafico; ?>;">
+                                        <p style="margin: 0 0 5px 0; color: #333; font-size: 0.9em;">Frequência</p>
+                                        <p style="margin: 0; font-size: 2.2em; font-weight: bold; color: <?php echo $cor_grafico; ?>;">
+                                            <?php echo number_format($perc_freq, 1); ?>%
                                         </p>
                                     </div>
                                 </div>
 
-                                <div style="background: #e9ecef; border-radius: 10px; height: 30px; overflow: hidden; margin-bottom: 15px;">
-                                    <div style="background: <?php echo $cor_grafico; ?>; height: 100%; width: <?php echo $perc_freq; ?>%; transition: width 0.3s ease;"></div>
+                                <!-- BARRA DE PROGRESSO -->
+                                <div class="barra_de_progresso">
+                                    <div style="background: <?php echo $cor_grafico; ?>; width: <?php echo number_format($perc_freq, 1, '.', ''); ?>%;">
+                                        <span>
+                                            <?php echo number_format($perc_freq, 1); ?>%
+                                        </span>
+                                    </div>
+                                    <div style="position: absolute; left: 75%; top: 0; bottom: 0; width: 2px; background: #dc3545; z-index: 1;"></div>
+                                    <span style="position: absolute; left: calc(75% - 35px); top: -25px; font-size: 0.75em; color: #dc3545; font-weight: bold; white-space: nowrap;">
+                                        Mínimo 75%
+                                    </span>
                                 </div>
 
-                                <?php if ($pode_sair && !$proxima_falta_reprova): ?>
-                                    <div style="padding: 15px; background: #d4edda; border-left: 4px solid #28a745; border-radius: 4px;">
-                                        <p style="margin: 0; color: #155724;">
-                                            ✓ <strong>Você pode sair!</strong> Sua frequência está acima de 75%.
-                                        </p>
-                                    </div>
-                                <?php elseif ($pode_sair && $proxima_falta_reprova): ?>
-                                    <div style="padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
-                                        <p style="margin: 0; color: #856404;">
-                                            ⚠ <strong>Atenção!</strong> Se você sair agora, sua frequência cairá para
-                                            <?php echo number_format($perc_com_mais_uma_falta, 1); ?>% e você será reprovado!
-                                        </p>
-                                    </div>
-                                <?php else: ?>
-                                    <div style="padding: 15px; background: #f8d7da; border-left: 4px solid #dc3545; border-radius: 4px;">
-                                        <p style="margin: 0; color: #721c24;">
-                                            ✗ <strong>Você não pode sair!</strong> Sua frequência já está abaixo de 75%.
-                                        </p>
-                                    </div>
-                                <?php endif; ?>
+                                <div style="text-align: center; margin-top: 15px; padding: 10px; background: #fff; border-radius: 5px;">
+                                    <strong style="color: #333;">Total:</strong>
+                                    <span style="font-size: 1.2em; font-weight: bold; color: #007bff;">
+                                        <?php echo $total_faltas; ?> aulas
+                                    </span>
+                                    <span style="color: #666; font-size: 0.9em;">
+                                        (<?php echo number_format($horas_faltadas, 2); ?> horas)
+                                    </span>
+                                </div>
                             </div>
-                        <?php endforeach; ?>
 
-                        <script>
-                            function mostrarFrequenciaUC() {
-                                const ucId = document.getElementById('select_uc_frequencia').value;
-                                document.querySelectorAll('.frequencia-uc-card').forEach(card => {
-                                    card.style.display = 'none';
-                                });
-                                if (ucId) {
-                                    const card = document.querySelector(`.frequencia-uc-card[data-uc-id="${ucId}"]`);
-                                    if (card) card.style.display = 'block';
-                                }
-                            }
-                        </script>
-                    <?php endif; ?>
+                            <!-- ALERTAS DE STATUS -->
+                            <?php if ($pode_sair && !$proxima_falta_reprova): ?>
+                                <div style="padding: 15px; background: #d4edda; border-left: 4px solid #28a745; border-radius: 4px;">
+                                    <p style="margin: 0; color: #155724;">
+                                        <strong>✓ Você pode sair!</strong> Sua frequência está acima de 75%.
+                                    </p>
+                                </div>
+                            <?php elseif ($pode_sair && $proxima_falta_reprova): ?>
+                                <div style="padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                    <p style="margin: 0; color: #856404;">
+                                        <strong>⚠ ATENÇÃO!</strong> Você está no limite! A próxima falta pode causar sua reprovação.<br>
+                                        <span style="font-size: 0.9em;">
+                                            Sua frequência cairá para <strong><?php echo number_format($perc_com_mais_uma, 1); ?>%</strong>
+                                        </span>
+                                    </p>
+                                </div>
+                            <?php else: ?>
+                                <div style="padding: 15px; background: #f8d7da; border-left: 4px solid #dc3545; border-radius: 4px;">
+                                    <p style="margin: 0; color: #721c24;">
+                                        <strong>✗ CUIDADO!</strong> Sua frequência está abaixo de 75%.<br>
+                                        <span style="font-size: 0.9em;">Você corre risco de reprovação.</span>
+                                    </p>
+                                </div>
+                            <?php endif; ?>
                 </div>
-            </div>
+            <?php endforeach; ?>
+
+            <script>
+                function mostrarFrequenciaUC() {
+                    const ucId = document.getElementById('select_uc_frequencia').value;
+                    document.querySelectorAll('.frequencia-uc-card').forEach(card => {
+                        card.style.display = 'none';
+                    });
+                    if (ucId) {
+                        const card = document.querySelector(`.frequencia-uc-card[data-uc-id="${ucId}"]`);
+                        if (card) card.style.display = 'block';
+                    }
+                }
+            </script>
         <?php endif; ?>
-    </div>
+    <?php endif; ?>
+            </div>
     </div>
 
     <!-- PEDAGÓGICO -->
@@ -1432,6 +1557,17 @@ if ($tipo_user == 'portaria') {
                 </div>
 
                 <?php
+                // Fetch all instructors for lookup
+                $instrutores_map = [];
+                try {
+                    $stmt_inst = $conn->query("SELECT id_funcionario, nome FROM funcionario WHERE tipo = 'instrutor'");
+                    while ($row = $stmt_inst->fetch(PDO::FETCH_ASSOC)) {
+                        $instrutores_map[$row['id_funcionario']] = $row['nome'];
+                    }
+                } catch (PDOException $e) {
+                    // Handle silently
+                }
+
                 $historico_alunos = $conn->query("
             SELECT s.*, a.nome as aluno_nome, a.matricula,
                    t.id_turma, t.nome as turma_nome,
@@ -1505,7 +1641,13 @@ if ($tipo_user == 'portaria') {
                                 <?php if ($al['status'] != 'rejeitada'): ?>
                                     <div class="info-item">
                                         <strong>Instrutor:</strong>
-                                        <?php echo htmlspecialchars($al['instrutor_nome'] ?? 'N/A'); ?>
+                                        <?php
+                                        $nome_exibir = $al['instrutor_nome'] ?? 'N/A';
+                                        if (!empty($al['id_autorizacao']) && isset($instrutores_map[$al['id_autorizacao']])) {
+                                            $nome_exibir = $instrutores_map[$al['id_autorizacao']];
+                                        }
+                                        echo htmlspecialchars($nome_exibir);
+                                        ?>
                                     </div>
                                     <?php if (!empty($al['hora_instrutor'])): ?>
                                         <div class="info-item">
@@ -1644,7 +1786,7 @@ if ($tipo_user == 'portaria') {
         <!-- INSTRUTORES MAIS LIBERAÇÕES -->
         <div id="instrutores_liberacoes" class="section" style="display:none;">
             <div class="container">
-                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Instrutores com Mais Alunos Liberados</h3>
+                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Estatísticas de Instrutores</h3>
 
                 <div class="filtros-container">
                     <select id="filtro_instrutor" onchange="filtrarPorInstrutor()">
@@ -1676,20 +1818,14 @@ if ($tipo_user == 'portaria') {
             ORDER BY total_liberacoes DESC, f.nome ASC
         ")->fetchAll();
 
-                $total_geral = array_sum(array_column($stats_instrutores, 'total_liberacoes'));
-
                 foreach ($stats_instrutores as $stat):
-                    $percentual = $total_geral > 0 ? ($stat['total_liberacoes'] / $total_geral) * 100 : 0;
                 ?>
                     <div class="instrutor-stat-card" data-instrutor-id="<?php echo $stat['id_funcionario']; ?>"
-                        style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h4><?php echo htmlspecialchars($stat['nome']); ?></h4>
-                        <p><strong>Total de Liberações:</strong> <?php echo $stat['total_liberacoes']; ?></p>
-                        <p><strong>Percentual:</strong> <?php echo number_format($percentual, 1); ?>%</p>
-
-                        <div style="background: #e9ecef; border-radius: 10px; height: 30px; overflow: hidden; margin-top: 10px;">
-                            <div style="background: #007bff; height: 100%; width: <?php echo $percentual; ?>%; transition: width 0.3s ease;"></div>
-                        </div>
+                        style="background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: left;">
+                        <h4 style="color: black; font-size: 15px; margin-bottom: 5px; text-align: left;"><?php echo htmlspecialchars($stat['nome']); ?></h4>
+                        <p style="font-size: 0.9em; color: #666; margin: 0;">
+                            Total de Liberações: <strong><?php echo $stat['total_liberacoes']; ?></strong>
+                        </p>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -1702,6 +1838,110 @@ if ($tipo_user == 'portaria') {
 
                 cards.forEach(card => {
                     const mostrar = (instrutorId === "" || card.getAttribute('data-instrutor-id') === instrutorId);
+                    card.style.display = mostrar ? 'block' : 'none';
+                });
+            }
+        </script>
+
+        <!-- TURMAS COM ALUNOS LIBERADOS -->
+        <div id="turmas_alunos_liberados" class="section" style="display:none;">
+            <div class="container">
+                <h3 style="text-align:center; margin-bottom:30px; color:#004a8f;">Turmas com Alunos Liberados</h3>
+
+                <div class="filtros-container">
+                    <select id="filtro_turma_liberados_pedagogico" onchange="filtrarTurmasLiberados()">
+                        <option value="">Todas as Turmas</option>
+                        <?php foreach ($turmas as $t): ?>
+                            <option value="<?php echo $t['id_turma']; ?>">
+                                <?php echo htmlspecialchars($t['nome'] . ' - ' . $t['curso_nome']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <?php
+                foreach ($turmas as $turma):
+                    $stmt_liberados = $conn->prepare("
+                SELECT 
+                    a.nome as aluno_nome,
+                    a.matricula,
+                    COUNT(s.id_solicitacao) as total_saidas,
+                    MAX(s.data_saida) as ultima_saida
+                FROM solicitacao s
+                JOIN aluno a ON s.id_aluno = a.id_aluno
+                JOIN matricula m ON a.id_aluno = m.id_aluno
+                WHERE m.id_turma = ?
+                AND s.status IN ('liberado', 'concluido')
+                GROUP BY a.id_aluno, a.nome, a.matricula
+                ORDER BY total_saidas DESC, a.nome
+            ");
+                    $stmt_liberados->execute([$turma['id_turma']]);
+                    $alunos_liberados = $stmt_liberados->fetchAll();
+
+                    if (empty($alunos_liberados)) continue;
+                ?>
+                    <div class="turma-liberados-card" data-turma-id="<?php echo $turma['id_turma']; ?>"
+                        style="background: white; padding: 20px; margin-bottom: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #007bff;">
+
+                        <h4 style="margin-bottom: 20px; color: #004a8f;">
+                            <?php echo htmlspecialchars($turma['nome'] . ' - ' . $turma['curso_nome']); ?>
+                        </h4>
+
+                        <p style="margin-bottom: 15px; font-weight: bold;">
+                            Total de alunos com saídas: <?php echo count($alunos_liberados); ?>
+                        </p>
+
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8f9fa;">
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Nome</th>
+                                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Matrícula</th>
+                                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Total de Saídas</th>
+                                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Última Saída</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($alunos_liberados as $aluno): ?>
+                                    <tr>
+                                        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">
+                                            <?php echo htmlspecialchars($aluno['aluno_nome']); ?>
+                                        </td>
+                                        <td style="padding: 10px; border-bottom: 1px solid #dee2e6;">
+                                            <?php echo htmlspecialchars($aluno['matricula']); ?>
+                                        </td>
+                                        <td style="padding: 10px; text-align: center; border-bottom: 1px solid #dee2e6;">
+                                            <div class="totaldesaida">
+                                                <span style="color: #333;">
+                                                    <?php echo $aluno['total_saidas']; ?>
+                                                </span>
+                                            </div>
+
+                                        </td>
+                                        <td style="padding: 10px; text-align: center; border-bottom: 1px solid #dee2e6;">
+                                            <?php
+                                            if (!empty($aluno['ultima_saida'])) {
+                                                echo date('d/m/Y H:i', strtotime($aluno['ultima_saida']));
+                                            } else {
+                                                echo 'Aguardando portaria';
+                                            }
+                                            ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <script>
+            function filtrarTurmasLiberados() {
+                const turmaId = document.getElementById('filtro_turma_liberados_pedagogico').value;
+                const cards = document.querySelectorAll('.turma-liberados-card');
+
+                cards.forEach(card => {
+                    const mostrar = (turmaId === "" || card.getAttribute('data-turma-id') === turmaId);
                     card.style.display = mostrar ? 'block' : 'none';
                 });
             }
@@ -2648,107 +2888,33 @@ if ($tipo_user == 'portaria') {
             <div class="container">
                 <h3>Alunos Liberados - Registro de Faltas</h3>
 
-                <?php if (!empty($turmas_instrutor)): ?>
-                    <div style="margin-bottom: 20px;">
-                        <label for="filtro_turma_liberados">Filtrar por Turma:</label>
-                        <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
-                            <option value="">Todas as Turmas</option>
-                            <?php foreach ($turmas_instrutor as $turma): ?>
-                                <option value="<?php echo $turma['id_turma']; ?>">
-                                    <?php echo htmlspecialchars($turma['turma_nome']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
+                <div style="margin-bottom: 20px;">
+                    <label for="filtro_turma_liberados">Filtrar por Turma:</label>
+                    <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
+                        <option value="">Todas as Turmas</option>
+                        <?php foreach ($turmas_instrutor as $turma): ?>
+                            <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <script>
+                    function filtrarLiberadosPorTurma() {
+                        const turmaId = document.getElementById('filtro_turma_liberados').value;
+                        const cards = document.querySelectorAll('.aluno-liberado-card');
+
+                        cards.forEach(card => {
+                            if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
+                                card.style.display = 'block';
+                            } else {
+                                card.style.display = 'none';
+                            }
+                        });
+                    }
+                </script>
 
                 <?php
-                try {
-                    $alunos_liberados_instrutor = $conn->query("
-                    SELECT s.*, a.nome as aluno_nome, a.matricula, 
-                           t.id_turma, t.nome as turma_nome,
-                           uc.nome as uc_nome,
-                           DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
-                           DATE_FORMAT(s.data_autorizada, '%d/%m/%Y %H:%i') as data_autorizada_fmt,
-                           DATE_FORMAT(s.data_saida, '%d/%m/%Y %H:%i') as data_saida_fmt
-                    FROM solicitacao s 
-                    JOIN aluno a ON s.id_aluno = a.id_aluno 
-                    JOIN matricula m ON a.id_aluno = m.id_aluno
-                    JOIN turma t ON m.id_turma = t.id_turma
-                    LEFT JOIN unidade_curricular uc ON s.id_uc = uc.id_curricular
-                    WHERE (s.status = 'liberado' OR s.status = 'concluido')
-                    ORDER BY s.data_solicitada DESC
-                ")->fetchAll();
-                } catch (PDOException $e) {
-                    error_log("Erro ao buscar alunos liberados: " . $e->getMessage());
-                    $alunos_liberados_instrutor = [];
-                }
-
-                if (empty($alunos_liberados_instrutor)): ?>
-                    <p>Nenhum aluno liberado no momento.</p>
-                <?php else: ?>
-                    <?php
-                    foreach ($alunos_liberados_instrutor as $al):
-                        $parsed = parseMotivo($al['motivo']);
-                        $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                        $status_texto = getStatusText($al['status'], $al['motivo']);
-                    ?>
-                        <div class="solicitacao-card aluno-liberado-card"
-                            data-turma-id="<?php echo $al['id_turma']; ?>"
-                            style="border-left: 4px solid #28a745;">
-                            <div class="solicitacao-header">
-                                <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
-                            </div>
-                            <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
-                            <p><strong>UC:</strong> <?php echo htmlspecialchars($al['uc_nome'] ?? 'Não informada'); ?></p>
-                            <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                            <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
-                            <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
-
-                            <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
-                                <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
-                            <?php endif; ?>
-
-                            <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-    <?php endif; ?>
-
-    <!-- ALUNOS LIBERADOS -->
-    <div id="alunos_liberados_instrutor" class="section" style="display:none;">
-        <div class="container">
-            <h3>Alunos Liberados - Registro de Faltas</h3>
-
-            <div style="margin-bottom: 20px;">
-                <label for="filtro_turma_liberados">Filtrar por Turma:</label>
-                <select id="filtro_turma_liberados" onchange="filtrarLiberadosPorTurma()">
-                    <option value="">Todas as Turmas</option>
-                    <?php foreach ($turmas_instrutor as $turma): ?>
-                        <option value="<?php echo $turma['id_turma']; ?>"><?php echo htmlspecialchars($turma['turma_nome']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <script>
-                function filtrarLiberadosPorTurma() {
-                    const turmaId = document.getElementById('filtro_turma_liberados').value;
-                    const cards = document.querySelectorAll('.aluno-liberado-card');
-
-                    cards.forEach(card => {
-                        if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
-                            card.style.display = 'block';
-                        } else {
-                            card.style.display = 'none';
-                        }
-                    });
-                }
-            </script>
-
-            <?php
-            $alunos_liberados_instrutor = $conn->query("
+                $alunos_liberados_instrutor = $conn->query("
                 SELECT s.*, a.nome as aluno_nome, a.matricula, 
                        t.id_turma, t.nome as turma_nome,
                        DATE_FORMAT(s.data_solicitada, '%d/%m/%Y %H:%i') as data_solicitada_fmt,
@@ -2762,53 +2928,55 @@ if ($tipo_user == 'portaria') {
                 ORDER BY s.data_solicitada DESC
             ")->fetchAll();
 
-            if (empty($alunos_liberados_instrutor)): ?>
-                <p>Nenhum aluno liberado no momento.</p>
-            <?php else: ?>
-                <?php
-                $motivos_map = [
-                    '1' => 'Consulta médica',
-                    '2' => 'Consulta odontológica',
-                    '3' => 'Exames médicos',
-                    '4' => 'Problemas de saúde',
-                    '5' => 'Solicitação da empresa',
-                    '6' => 'Solicitação da família',
-                    '7' => 'Viagem particular',
-                    '8' => 'Viagem a trabalho',
-                    '9' => 'Treinamento a trabalho'
-                ];
+                if (empty($alunos_liberados_instrutor)): ?>
+                    <p>Nenhum aluno liberado no momento.</p>
+                <?php else: ?>
+                    <?php
+                    $motivos_map = [
+                        '1' => 'Consulta médica',
+                        '2' => 'Consulta odontológica',
+                        '3' => 'Exames médicos',
+                        '4' => 'Problemas de saúde',
+                        '5' => 'Solicitação da empresa',
+                        '6' => 'Solicitação da família',
+                        '7' => 'Viagem particular',
+                        '8' => 'Viagem a trabalho',
+                        '9' => 'Treinamento a trabalho'
+                    ];
 
-                foreach ($alunos_liberados_instrutor as $al):
-                    $parsed = parseMotivo($al['motivo']);
-                    $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
-                    $status_texto = getStatusText($al['status'], $al['motivo']);
-                ?>
-                    <div class="solicitacao-card aluno-liberado-card" data-turma-id="<?php echo $al['id_turma']; ?>" style="border-left: 4px solid #28a745;">
-                        <div class="solicitacao-header">
-                            <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                    foreach ($alunos_liberados_instrutor as $al):
+                        $parsed = parseMotivo($al['motivo']);
+                        $motivo_texto = (is_numeric($parsed['motivo']) && isset($motivos_map[$parsed['motivo']])) ? $motivos_map[$parsed['motivo']] : $parsed['motivo'];
+                        $status_texto = getStatusText($al['status'], $al['motivo']);
+                    ?>
+                        <div class="solicitacao-card aluno-liberado-card" data-turma-id="<?php echo $al['id_turma']; ?>" style="border-left: 4px solid #28a745;">
+                            <div class="solicitacao-header">
+                                <h4><?php echo htmlspecialchars($al['aluno_nome']); ?> (<?php echo htmlspecialchars($al['matricula']); ?>)</h4>
+                            </div>
+                            <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
+                            <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
+                            <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
+                            <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
+
+                            <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
+                                <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
+                            <?php endif; ?>
+
+                            <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
+
+                            <div class="action-buttons" style="margin-top:15px;">
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="id_solicitacao_falta" value="<?php echo $al['id_solicitacao']; ?>">
+                                    <input type="hidden" name="id_aluno_falta" value="<?php echo $al['id_aluno']; ?>">
+                                </form>
+                            </div>
                         </div>
-                        <p><strong>Turma:</strong> <?php echo htmlspecialchars($al['turma_nome']); ?></p>
-                        <p><strong>Motivo:</strong> <?php echo htmlspecialchars($motivo_texto); ?></p>
-                        <p><strong>Data Solicitação:</strong> <?php echo $al['data_solicitada_fmt']; ?></p>
-                        <p><strong>Liberado em:</strong> <?php echo $al['data_autorizada_fmt'] ?? 'N/A'; ?></p>
-
-                        <?php if ($al['status'] == 'concluido' && !empty($al['data_saida_fmt'])): ?>
-                            <p><strong>Saída Registrada:</strong> <?php echo $al['data_saida_fmt']; ?></p>
-                        <?php endif; ?>
-
-                        <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;"><?php echo $status_texto; ?></span></p>
-
-                        <div class="action-buttons" style="margin-top:15px;">
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="id_solicitacao_falta" value="<?php echo $al['id_solicitacao']; ?>">
-                                <input type="hidden" name="id_aluno_falta" value="<?php echo $al['id_aluno']; ?>">
-                            </form>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
+    <?php endif; ?>
+
 </body>
 
 </html>

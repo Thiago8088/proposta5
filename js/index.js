@@ -1,195 +1,131 @@
 function showSection(section) {
     console.log('Mostrando seção:', section);
 
-    document.querySelectorAll('.section').forEach(sec => {
+    document.querySelectorAll('.section').forEach(function (sec) {
         sec.style.display = 'none';
         sec.classList.remove('active');
     });
 
-    const sectionElement = document.getElementById(section);
+    var sectionElement = document.getElementById(section);
     if (sectionElement) {
         sectionElement.style.display = 'block';
         sectionElement.classList.add('active');
-        console.log('Seção encontrada e exibida:', section);
-    } else {
-        console.error('Seção não encontrada:', section);
     }
 
-    document.querySelectorAll('.navbar-menu a').forEach(link => {
+    document.querySelectorAll('.navbar-menu a').forEach(function (link) {
         link.classList.remove('active');
     });
 
-    if (event && event.target) {
+    if (typeof event !== 'undefined' && event.target) {
         event.target.classList.add('active');
     }
 }
 
-function mostrarHistoricoTab(tipo) {
-    console.log('Mostrando tab:', tipo);
+function showList(listId) {
+    document.querySelectorAll('.list').forEach(function (l) {
+        l.style.display = 'none';
+    });
+    var list = document.getElementById('list-' + listId);
+    if (list) {
+        list.style.display = 'block';
+    }
+}
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+// ========================================
+// TABS (HISTÓRICO)
+// ========================================
+
+function mostrarHistoricoTab(tipo) {
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
         btn.classList.remove('active');
     });
 
-    if (event && event.target) {
+    if (typeof event !== 'undefined' && event.target) {
         event.target.classList.add('active');
     }
 
-    document.querySelectorAll('.historico-content').forEach(el => {
+    document.querySelectorAll('.historico-content').forEach(function (el) {
         el.style.display = 'none';
         el.classList.remove('active');
     });
 
-    const elemento = document.getElementById('historico-' + tipo);
+    var elemento = document.getElementById('historico-' + tipo);
     if (elemento) {
         elemento.style.display = 'block';
         elemento.classList.add('active');
-        console.log('Tab exibida:', tipo);
-    } else {
-        console.error('Tab não encontrada:', 'historico-' + tipo);
     }
 }
 
-window.addEventListener('DOMContentLoaded', function () {
-    console.log('DOM carregado');
-
-    const firstSection = document.querySelector('.navbar-menu a');
-    if (firstSection) {
-        firstSection.click();
-        console.log('Primeira seção clicada');
-    }
-});
-
-function showList(type) {
-    document.querySelectorAll('.list').forEach(l => l.style.display = 'none');
-    const element = document.getElementById('list-' + type);
-    if (element) {
-        element.style.display = 'block';
-    }
-}
-
-function carregarMatriculas(idTurma) {
-    if (idTurma == '') {
-        document.getElementById('matriculas_turma').innerHTML = '';
-        return;
-    }
-
-    document.querySelectorAll('.lista-alunos-turma').forEach(el => el.style.display = 'none');
-
-    const lista = document.getElementById('alunos-turma-' + idTurma);
-    if (lista) {
-        lista.style.display = 'block';
-    }
-}
-
-function toggleOutro() {
-    const motivo = document.getElementById('motivo').value;
-    const divOutro = document.getElementById('motivo_outro_div');
-    divOutro.style.display = (motivo === '10') ? 'block' : 'none';
-}
-
-function calcularCargaTotal() {
-    const select = document.getElementById('id_curso_turma');
-    const idCurso = select.value;
-    if (!idCurso) return;
-
-    fetch('ajax_carga_curso.php?id_curso=' + idCurso)
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('carga_horaria_total').value = data.carga_total || 0;
-        });
-}
+// ========================================
+// FORMULÁRIOS
+// ========================================
 
 function mostrarEdicao(tipo, id) {
-    document.getElementById('form-editar-' + tipo + '-' + id).style.display = 'block';
     document.getElementById('display-' + tipo + '-' + id).style.display = 'none';
+    document.getElementById('form-editar-' + tipo + '-' + id).style.display = 'table-row';
 }
 
 function ocultarEdicao(tipo, id) {
-    document.getElementById('form-editar-' + tipo + '-' + id).style.display = 'none';
     document.getElementById('display-' + tipo + '-' + id).style.display = 'table-row';
+    document.getElementById('form-editar-' + tipo + '-' + id).style.display = 'none';
 }
 
-function mostrarSolicitacoes(status) {
-    document.querySelectorAll('.solicitacoes-detalhadas').forEach(el => el.style.display = 'none');
-    const elemento = document.getElementById('solicitacoes-' + status);
-    if (elemento) {
-        elemento.style.display = 'block';
+function toggleOutro() {
+    var motivo = document.getElementById('motivo');
+    var motivoOutroDiv = document.getElementById('motivo_outro_div');
+    if (motivo && motivoOutroDiv) {
+        motivoOutroDiv.style.display = (motivo.value === '10') ? 'block' : 'none';
     }
 }
 
-function filtrarSolicitacoesPorTurma() {
-    const turmaId = document.getElementById('filtro_turma_solicitacao').value;
-    const cards = document.querySelectorAll('.solicitacao-card-instrutor');
+// ========================================
+// FILTROS
+// ========================================
 
-    cards.forEach(card => {
-        if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
-            card.style.display = 'block';
-        } else {
-            card.style.display = 'none';
-        }
+function filtrarSolicitacoesPorTurma() {
+    var turmaId = document.getElementById('filtro_turma_solicitacao').value;
+    var cards = document.querySelectorAll('.solicitacao-card-instrutor');
+
+    cards.forEach(function (card) {
+        var mostrar = (turmaId === "" || card.getAttribute('data-turma-id') === turmaId);
+        card.style.display = mostrar ? 'block' : 'none';
     });
 }
 
 function filtrarLiberadosPorTurma() {
-    const turmaId = document.getElementById('filtro_turma_liberados').value;
-    const cards = document.querySelectorAll('.aluno-liberado-card');
+    var turmaId = document.getElementById('filtro_turma_liberados').value;
+    var cards = document.querySelectorAll('.aluno-liberado-card');
 
-    cards.forEach(card => {
-        if (turmaId === "" || card.getAttribute('data-turma-id') === turmaId) {
-            card.style.display = 'block';
-        } else {
-            card.style.display = 'none';
-        }
+    cards.forEach(function (card) {
+        var mostrar = (turmaId === "" || card.getAttribute('data-turma-id') === turmaId);
+        card.style.display = mostrar ? 'block' : 'none';
     });
 }
 
-window.addEventListener('DOMContentLoaded', function () {
-    const firstSection = document.querySelector('.navbar-menu a');
-    if (firstSection) {
-        firstSection.click();
-    }
-});
+function filtrarHistoricoSolicitacoes() {
+    var turmaId = document.getElementById('filtro_turma_historico_sol').value;
+    var cards = document.querySelectorAll('.historico-aluno-card');
 
-function carregarTurmasPorCurso(idCurso) {
-    const selectTurma = document.getElementById('turma_aluno');
-
-    if (idCurso == '') {
-        selectTurma.innerHTML = '<option value="">Primeiro selecione o curso</option>';
-        return;
-    }
-
-    fetch('index.php?ajax=turmas_curso&id_curso=' + idCurso)
-        .then(response => response.json())
-        .then(data => {
-            selectTurma.innerHTML = '<option value="">Selecione a turma</option>';
-            data.forEach(turma => {
-                const option = document.createElement('option');
-                option.value = turma.id_turma;
-                option.textContent = turma.nome;
-                selectTurma.appendChild(option);
-            });
-        })
-        .catch(error => {
-            console.error('Erro ao carregar turmas:', error);
-            selectTurma.innerHTML = '<option value="">Erro ao carregar turmas</option>';
-        });
+    cards.forEach(function (card) {
+        var mostrar = (turmaId === '' || card.getAttribute('data-turma-id') === turmaId);
+        card.style.display = mostrar ? 'block' : 'none';
+    });
 }
 
 function filtrarHistoricoAlunos() {
-    const turmaId = document.getElementById('filtro_turma_historico').value;
-    const status = document.getElementById('filtro_status_historico').value;
-    const cards = document.querySelectorAll('.historico-aluno-card');
+    var turmaId = document.getElementById('filtro_turma_historico').value;
+    var status = document.getElementById('filtro_status_historico').value;
+    var cards = document.querySelectorAll('.historico-aluno-card');
 
-    cards.forEach(card => {
-        const cardTurma = card.getAttribute('data-turma-id');
-        const cardStatus = card.getAttribute('data-status');
+    cards.forEach(function (card) {
+        var cardTurma = card.getAttribute('data-turma-id');
+        var cardStatus = card.getAttribute('data-status');
 
-        let mostrarTurma = (turmaId === "" || cardTurma === turmaId);
-        let mostrarStatus = true;
+        var mostrarTurma = (turmaId === "" || cardTurma === turmaId);
+        var mostrarStatus = true;
 
         if (status !== "") {
-            const statusArray = status.split(',');
+            var statusArray = status.split(',');
             mostrarStatus = statusArray.includes(cardStatus);
         }
 
@@ -197,12 +133,92 @@ function filtrarHistoricoAlunos() {
     });
 }
 
-function filtrarHistoricoSolicitacoes() {
-    const turmaId = document.getElementById('filtro_turma_historico_sol').value;
-    const cards = document.querySelectorAll('.historico-aluno-card');
-    cards.forEach(card => {
-        const cardTurma = card.getAttribute('data-turma-id');
-        const mostrar = (turmaId === "" || cardTurma === turmaId);
-        card.style.display = mostrar ? 'block' : 'none';
+function mostrarSolicitacoes(status) {
+    document.querySelectorAll('.solicitacoes-detalhadas').forEach(function (el) {
+        el.style.display = 'none';
     });
+    var elemento = document.getElementById('solicitacoes-' + status);
+    if (elemento) {
+        elemento.style.display = 'block';
+    }
 }
+
+// ========================================
+// AJAX
+// ========================================
+
+function carregarMatriculas(turmaId) {
+    var listas = document.querySelectorAll('.lista-alunos-turma');
+    listas.forEach(function (lista) {
+        lista.style.display = 'none';
+    });
+
+    if (turmaId) {
+        var lista = document.getElementById('alunos-turma-' + turmaId);
+        if (lista) {
+            lista.style.display = 'block';
+        }
+    }
+}
+
+function carregarTurmasPorCurso(cursoId) {
+    var selectTurma = document.getElementById('turma_aluno');
+    if (!selectTurma) return;
+
+    selectTurma.innerHTML = '<option value="">Carregando...</option>';
+
+    if (!cursoId) {
+        selectTurma.innerHTML = '<option value="">Primeiro selecione o curso</option>';
+        return;
+    }
+
+    fetch('index.php?ajax=turmas_curso&id_curso=' + cursoId)
+        .then(function (response) { return response.json(); })
+        .then(function (turmas) {
+            selectTurma.innerHTML = '<option value="">Selecione a Turma</option>';
+            turmas.forEach(function (turma) {
+                var option = document.createElement('option');
+                option.value = turma.id_turma;
+                option.textContent = turma.nome;
+                selectTurma.appendChild(option);
+            });
+        })
+        .catch(function (error) {
+            console.error('Erro ao carregar turmas:', error);
+            selectTurma.innerHTML = '<option value="">Erro ao carregar turmas</option>';
+        });
+}
+
+function calcularCargaTotal() {
+    var cursoId = document.getElementById('id_curso_turma').value;
+    var inputCarga = document.getElementById('carga_horaria_total');
+
+    if (!cursoId || !inputCarga) return;
+
+    fetch('index.php?ajax=carga_curso&id_curso=' + cursoId)
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            if (data.carga_total) {
+                inputCarga.value = data.carga_total;
+            }
+        })
+        .catch(function (error) {
+            console.error('Erro ao calcular carga:', error);
+        });
+}
+
+// ========================================
+// INICIALIZAÇÃO
+// ========================================
+
+window.addEventListener('DOMContentLoaded', function () {
+    console.log('Sistema carregado');
+
+    // Só mostrar primeira seção se não houver estado salvo
+    if (!localStorage.getItem('ultima_secao')) {
+        var firstSection = document.querySelector('.navbar-menu a');
+        if (firstSection) {
+            firstSection.click();
+        }
+    }
+});
